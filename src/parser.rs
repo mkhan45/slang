@@ -2,7 +2,7 @@ use crate::{Variable, OperatorType, Token};
 
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SubExpression {
     Val(Variable),
     Operator(OperatorType),

@@ -8,6 +8,7 @@ use std::str::Chars;
 use std::collections::HashMap;
 
 mod parser;
+use parser::{SubExpression, Expression};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Variable {
@@ -136,6 +137,68 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn read_expr(&mut self, first_token: Token, vars: &HashMap<String, Variable>) -> parser::Expression {
+        let mut stack: Vec<Token> = Vec::new();
+        stack.push(Token::LParen);
+
+        let mut postfix_expr = Expression::new();
+
+        let mut j = 0;
+
+        let mut used_first = false;
+
+        loop {
+            let token = if used_first {
+                self.next_token()
+            } else {
+                used_first = true;
+                first_token.clone()
+            };
+
+            match token {
+                Token::LParen => stack.push(token),
+
+                Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) => {
+                    match token {
+                        Token::Name(name) => postfix_expr.insert(j, SubExpression::Val(vars.get(&name).unwrap().clone())),
+                        Token::Integer(int) => postfix_expr.insert(j, SubExpression::Val(Variable::Integer(int))),
+                        Token::Float(float) => postfix_expr.insert(j, SubExpression::Val(Variable::Float(float))),
+                        Token::StringLiteral(string) => postfix_expr.insert(j, SubExpression::Val(Variable::Str(string))),
+                        _ => panic!(),
+                    }
+                    j += 1;
+                },
+
+                Token::Operator(token_ty) => {
+                    use parser::operator_precedence;
+                    let mut last_val = stack.pop().unwrap();
+                    while let Token::Operator(stack_ty) = last_val {
+                        if ! operator_precedence(stack_ty) > operator_precedence(token_ty) {
+                            break;
+                        }
+                        postfix_expr.insert(j, SubExpression::Operator(stack_ty));
+                        j += 1;
+                        last_val = stack.pop().unwrap();
+                    }
+                    stack.push(last_val);
+                    stack.push(token);
+                },
+
+                Token::RParen | Token::EOF => {
+                    let mut last_val = stack.pop().unwrap();
+                    while last_val != Token::LParen {
+                        postfix_expr.insert(j, parser::token_to_subexpr(last_val));
+                        j += 1;
+                        last_val = stack.pop().unwrap();
+                    }
+                    break postfix_expr;
+                },
+
+                _ => todo!(),
+            }
+        }
+    }
+
     pub fn next_token(&mut self) -> Token {
         self.skip_whitespace();
 
@@ -212,6 +275,7 @@ fn main() {
     let stdin = io::stdin();
 
     let mut vars: HashMap<String, Variable> = HashMap::new();
+    vars.insert("PI".to_owned(), Variable::Float(std::f64::consts::PI));
 
     loop {
         print!(">> ");
@@ -222,61 +286,45 @@ fn main() {
 
         let mut lexer = Lexer::new(&mut line);
 
-        let mut stack: Vec<Token> = Vec::new();
-        stack.push(Token::LParen);
-
-        use parser::{SubExpression, Expression};
-
-        let mut postfix_expr = Expression::new();
-
-        let mut j = 0;
-
         loop {
             let token = lexer.next_token();
 
             match token {
-                Token::LParen => stack.push(token),
-
-                Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) => {
-                    match token {
-                        Token::Name(name) => postfix_expr.insert(j, SubExpression::Val(vars.get(&name).unwrap().clone())),
-                        Token::Integer(int) => postfix_expr.insert(j, SubExpression::Val(Variable::Integer(int))),
-                        Token::Float(float) => postfix_expr.insert(j, SubExpression::Val(Variable::Float(float))),
-                        Token::StringLiteral(string) => postfix_expr.insert(j, SubExpression::Val(Variable::Str(string))),
-                        _ => panic!(),
+                Token::Ident(ty) => {
+                    match ty {
+                        IdentType::Let => {
+                            match lexer.next_token() {
+                                Token::Name(lhs) => {
+                                    if let Token::Assign = lexer.next_token() {
+                                        let token = lexer.next_token();
+                                        let rhs_expr = lexer.read_expr(token, &vars);
+                                        let rhs_eval = parser::eval_expr(rhs_expr, &vars);
+                                        vars.insert(lhs, rhs_eval);
+                                        break;
+                                    } else {
+                                        panic!("syntax error after let token")
+                                    }
+                                },
+                                _ => panic!("invalid assign"),
+                            }
+                        },
+                        _ => todo!(),
                     }
-                    j += 1;
-                },
+                }
 
-                Token::Operator(token_ty) => {
-                    use parser::operator_precedence;
-                    let mut last_val = stack.pop().unwrap();
-                    while let Token::Operator(stack_ty) = last_val {
-                        if ! operator_precedence(stack_ty) > operator_precedence(token_ty) {
-                            break;
-                        }
-                        postfix_expr.insert(j, SubExpression::Operator(stack_ty));
-                        j += 1;
-                        last_val = stack.pop().unwrap();
-                    }
-                    stack.push(last_val);
-                    stack.push(token);
-                },
 
-                Token::RParen | Token::EOF => {
-                    let mut last_val = stack.pop().unwrap();
-                    while last_val != Token::LParen {
-                        postfix_expr.insert(j, parser::token_to_subexpr(last_val));
-                        j += 1;
-                        last_val = stack.pop().unwrap();
+                // Token::LParen => stack.push(token),
+                
+                Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) | Token::Operator(_) |
+                    Token::RParen | Token::EOF | Token::LParen => {
+                        let postfix_expr = lexer.read_expr(token, &vars);
+                        println!("{:?}", parser::eval_expr(postfix_expr, &vars));
+                        break;
                     }
-                    break;
-                },
 
                 _ => todo!(),
             }
         }
 
-        println!("{:?}", parser::eval_expr(postfix_expr, &vars));
     }
 }
