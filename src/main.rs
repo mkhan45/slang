@@ -13,6 +13,7 @@ pub enum Variable {
     Integer(isize),
     Float(f64),
     Str(String),
+    Bool(bool),
     Custom(String, HashMap<String, Variable>),
 }
 
@@ -37,6 +38,7 @@ impl Variable {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
+    While,
     LParen,
     RParen,
     Assign,
@@ -47,7 +49,6 @@ pub enum Token {
     Float(f64),
     StringLiteral(String),
     Name(String),
-    Comparison(ComparisonType),
     Operator(OperatorType),
 }
 
@@ -61,21 +62,17 @@ pub enum IdentType {
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum ComparisonType {
-    GreaterEqual,
-    LessEqual,
-    Greater,
-    Less,
-    Equal,
-}
-
-#[derive(Clone, Copy, PartialEq, Debug)]
 pub enum OperatorType {
     Plus,
     Minus,
     Multiply,
     Divide,
     Exponentiate,
+    GreaterEqual,
+    LessEqual,
+    Greater,
+    Less,
+    Equal,
 }
 
 struct Lexer<'a> {
@@ -233,23 +230,23 @@ impl<'a> Lexer<'a> {
             Some('>') => {
                 if self.peek_char().unwrap() == &'=' {
                     self.read_char();
-                    Token::Comparison(ComparisonType::GreaterEqual)
+                    Token::Operator(OperatorType::GreaterEqual)
                 } else {
-                    Token::Comparison(ComparisonType::Greater)
+                    Token::Operator(OperatorType::Greater)
                 }
             },
             Some('<') => {
                 if self.peek_char().unwrap() == &'=' {
                     self.read_char();
-                    Token::Comparison(ComparisonType::LessEqual)
+                    Token::Operator(OperatorType::LessEqual)
                 } else {
-                    Token::Comparison(ComparisonType::Less)
+                    Token::Operator(OperatorType::Less)
                 }
             },
             Some('=') => {
                 if self.peek_char().unwrap() == &'=' {
                     self.read_char();
-                    Token::Comparison(ComparisonType::Equal)
+                    Token::Operator(OperatorType::Equal)
                 } else {
                     Token::Assign
                 }
@@ -287,6 +284,75 @@ impl<'a> Lexer<'a> {
     }
 }
 
+fn process_line(mut in_line: String, vars: &mut HashMap<String, Variable>) {
+    io::stdout().flush().unwrap();
+
+    let mut lexer = Lexer::new(&mut in_line);
+
+    loop {
+        let token = lexer.next_token();
+
+        match token {
+            Token::While => {
+                let conditional_expr = lexer.read_expr(vec!(), &vars);
+                while parser::eval_expr(&conditional_expr, &vars) == Variable::Bool(true) {
+                }
+            },
+
+            Token::Ident(ty) => {
+                match ty {
+                    IdentType::Let => {
+                        match lexer.next_token() {
+                            Token::Name(lhs) => {
+                                if let Token::Assign = lexer.next_token() {
+                                    let rhs_expr = lexer.read_expr(vec![], &vars);
+                                    let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+                                    vars.insert(lhs, rhs_eval);
+                                    break;
+                                } else {
+                                    panic!("syntax error after let token")
+                                }
+                            },
+                            _ => panic!("invalid assign"),
+                        }
+                    },
+                    _ => todo!(),
+                }
+            }
+
+
+            // Token::LParen => stack.push(token),
+
+            Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) | Token::Operator(_) |
+                Token::RParen | Token::EOF | Token::LParen => {
+                    lexer.skip_whitespace();
+                    let next_token = lexer.next_token();
+                    if let (Token::Name(lhs), Token::Assign) = (token.clone(), next_token.clone()) {
+                        if !vars.contains_key(&lhs) {
+                            panic!("Assigned to uninitialized variable {}", lhs);
+                        }
+                        let rhs_expr = lexer.read_expr(vec![], &vars);
+                        let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+
+                        let prev_val = vars.get(&lhs).unwrap();
+                        if prev_val.same_type(&rhs_eval) {
+                            vars.insert(lhs, rhs_eval);
+                        } else {
+                            panic!("Variable types do not match: {:?}, {:?}", lhs, rhs_eval);
+                        }
+                        break;
+                    }
+
+                    let postfix_expr = lexer.read_expr(vec!(token, next_token), &vars);
+                    println!("{:?}", parser::eval_expr(&postfix_expr, &vars));
+                    break;
+                }
+
+            _ => todo!(),
+        }
+    }
+}
+
 fn is_ident_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
@@ -303,65 +369,6 @@ fn main() {
 
         let mut line = String::new();
         stdin.lock().read_line(&mut line).unwrap();
-
-        let mut lexer = Lexer::new(&mut line);
-
-        loop {
-            let token = lexer.next_token();
-
-            match token {
-                Token::Ident(ty) => {
-                    match ty {
-                        IdentType::Let => {
-                            match lexer.next_token() {
-                                Token::Name(lhs) => {
-                                    if let Token::Assign = lexer.next_token() {
-                                        let rhs_expr = lexer.read_expr(vec![], &vars);
-                                        let rhs_eval = parser::eval_expr(rhs_expr, &vars);
-                                        vars.insert(lhs, rhs_eval);
-                                        break;
-                                    } else {
-                                        panic!("syntax error after let token")
-                                    }
-                                },
-                                _ => panic!("invalid assign"),
-                            }
-                        },
-                        _ => todo!(),
-                    }
-                }
-
-
-                // Token::LParen => stack.push(token),
-                
-                Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) | Token::Operator(_) |
-                    Token::RParen | Token::EOF | Token::LParen => {
-                        lexer.skip_whitespace();
-                        let next_token = lexer.next_token();
-                        if let (Token::Name(lhs), Token::Assign) = (token.clone(), next_token.clone()) {
-                            if !vars.contains_key(&lhs) {
-                                panic!("Assigned to uninitialized variable {}", lhs);
-                            }
-                            let rhs_expr = lexer.read_expr(vec![], &vars);
-                            let rhs_eval = parser::eval_expr(rhs_expr, &vars);
-
-                            let prev_val = vars.get(&lhs).unwrap();
-                            if prev_val.same_type(&rhs_eval) {
-                                vars.insert(lhs, rhs_eval);
-                            } else {
-                                panic!("Variable types do not match: {:?}, {:?}", lhs, rhs_eval);
-                            }
-                            break;
-                        }
-
-                        let postfix_expr = lexer.read_expr(vec!(token, next_token), &vars);
-                        println!("{:?}", parser::eval_expr(postfix_expr, &vars));
-                        break;
-                    }
-
-                _ => todo!(),
-            }
-        }
-
+        process_line(line, &mut vars);
     }
 }

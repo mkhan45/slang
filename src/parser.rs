@@ -13,7 +13,7 @@ pub type Expression = Vec<SubExpression>;
 
 use std::ops;
 
-pub fn eval_expr(expr: Expression, vars: &HashMap<String, Variable>) -> Variable {
+pub fn eval_expr(expr: &Expression, vars: &HashMap<String, Variable>) -> Variable {
     let mut stack = Expression::new();
 
     expr.iter().for_each(|subexpr|{
@@ -37,6 +37,11 @@ pub fn eval_expr(expr: Expression, vars: &HashMap<String, Variable>) -> Variable
                     OperatorType::Multiply => val2 * val1,
                     OperatorType::Divide => val2 / val1,
                     OperatorType::Exponentiate => val2.exp(val1),
+                    OperatorType::GreaterEqual => Variable::Bool(val2 >= val1),
+                    OperatorType::LessEqual => Variable::Bool(val2 <= val1),
+                    OperatorType::Greater => Variable::Bool(val2 > val1),
+                    OperatorType::Less => Variable::Bool(val2 < val1),
+                    OperatorType::Equal => Variable::Bool(val2 == val1),
                 };
 
                 stack.push(SubExpression::Val(v));
@@ -47,6 +52,19 @@ pub fn eval_expr(expr: Expression, vars: &HashMap<String, Variable>) -> Variable
     match stack.pop().unwrap() {
         SubExpression::Val(v) => v,
         _ => panic!("expr eval'd to not variable"),
+    }
+}
+
+use std::cmp::Ordering;
+impl PartialOrd for Variable {
+    fn partial_cmp(&self, rhs: &Variable) -> Option<Ordering> {
+        match (self, rhs) {
+            (Variable::Integer(v1), Variable::Integer(v2)) => v1.partial_cmp(v2),
+            (Variable::Float(v1), Variable::Integer(v2)) => v1.partial_cmp(&(*v2 as f64)),
+            (Variable::Integer(v1), Variable::Float(v2)) => (*v1 as f64).partial_cmp(v2),
+            (Variable::Float(v1), Variable::Float(v2)) => v1.partial_cmp(v2),
+            _ => panic!("illegal comparison"),
+        }
     }
 }
 
@@ -141,5 +159,10 @@ pub fn operator_precedence(ty: OperatorType) -> u8 {
         OperatorType::Multiply => 2,
         OperatorType::Divide => 2,
         OperatorType::Exponentiate => 3,
+        OperatorType::Equal => 3,
+        OperatorType::LessEqual => 0,
+        OperatorType::GreaterEqual => 0,
+        OperatorType::Less => 0,
+        OperatorType::Greater => 0,
     }
 }
