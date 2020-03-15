@@ -1,7 +1,5 @@
 use std::io::{self, BufRead, Write};
 
-use std::convert::TryInto;
-
 use std::iter::Peekable;
 use std::str::Chars;
 
@@ -15,7 +13,26 @@ pub enum Variable {
     Integer(isize),
     Float(f64),
     Str(String),
-    Custom(HashMap<String, Variable>),
+    Custom(String, HashMap<String, Variable>),
+}
+
+impl Variable {
+    pub fn same_type(&self, rhs: &Variable) -> bool {
+        match (self, rhs) {
+            (&Variable::Integer(_), &Variable::Integer(_)) => true,
+            (&Variable::Float(_), &Variable::Float(_)) => true,
+            (&Variable::Str(_), &Variable::Str(_)) => true,
+            (&Variable::Custom(_, _), &Variable::Custom(_, _)) => {
+                let self_clone = self.clone();
+                let rhs_clone = rhs.clone();
+                match (self_clone, rhs_clone) {
+                    (Variable::Custom(t1, _), Variable::Custom(t2, _)) => t1 == t2,
+                    _ => false,
+                }
+            },
+            _ => false,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -137,7 +154,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_expr(&mut self, first_token: Token, vars: &HashMap<String, Variable>) -> parser::Expression {
+    fn read_expr(&mut self, preceding_tokens: Vec<Token>, vars: &HashMap<String, Variable>) -> parser::Expression {
         let mut stack: Vec<Token> = Vec::new();
         stack.push(Token::LParen);
 
@@ -145,14 +162,15 @@ impl<'a> Lexer<'a> {
 
         let mut j = 0;
 
-        let mut used_first = false;
+        let mut preceding_index = 0;
 
         loop {
-            let token = if used_first {
+            let token = if preceding_index >= preceding_tokens.len() {
                 self.next_token()
             } else {
-                used_first = true;
-                first_token.clone()
+                let token = preceding_tokens[preceding_index].clone();
+                preceding_index += 1;
+                token
             };
 
             match token {
@@ -173,7 +191,7 @@ impl<'a> Lexer<'a> {
                     use parser::operator_precedence;
                     let mut last_val = stack.pop().unwrap();
                     while let Token::Operator(stack_ty) = last_val {
-                        if ! operator_precedence(stack_ty) > operator_precedence(token_ty) {
+                        if !operator_precedence(stack_ty) > operator_precedence(token_ty) {
                             break;
                         }
                         postfix_expr.insert(j, SubExpression::Operator(stack_ty));
@@ -191,12 +209,14 @@ impl<'a> Lexer<'a> {
                         j += 1;
                         last_val = stack.pop().unwrap();
                     }
-                    break postfix_expr;
+                    break;
                 },
 
                 _ => todo!(),
             }
         }
+
+        postfix_expr
     }
 
     pub fn next_token(&mut self) -> Token {
@@ -296,8 +316,7 @@ fn main() {
                             match lexer.next_token() {
                                 Token::Name(lhs) => {
                                     if let Token::Assign = lexer.next_token() {
-                                        let token = lexer.next_token();
-                                        let rhs_expr = lexer.read_expr(token, &vars);
+                                        let rhs_expr = lexer.read_expr(vec![], &vars);
                                         let rhs_eval = parser::eval_expr(rhs_expr, &vars);
                                         vars.insert(lhs, rhs_eval);
                                         break;
@@ -317,7 +336,25 @@ fn main() {
                 
                 Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) | Token::Operator(_) |
                     Token::RParen | Token::EOF | Token::LParen => {
-                        let postfix_expr = lexer.read_expr(token, &vars);
+                        lexer.skip_whitespace();
+                        let next_token = lexer.next_token();
+                        if let (Token::Name(lhs), Token::Assign) = (token.clone(), next_token.clone()) {
+                            if !vars.contains_key(&lhs) {
+                                panic!("Assigned to uninitialized variable {}", lhs);
+                            }
+                            let rhs_expr = lexer.read_expr(vec![], &vars);
+                            let rhs_eval = parser::eval_expr(rhs_expr, &vars);
+
+                            let prev_val = vars.get(&lhs).unwrap();
+                            if prev_val.same_type(&rhs_eval) {
+                                vars.insert(lhs, rhs_eval);
+                            } else {
+                                panic!("Variable types do not match: {:?}, {:?}", lhs, rhs_eval);
+                            }
+                            break;
+                        }
+
+                        let postfix_expr = lexer.read_expr(vec!(token, next_token), &vars);
                         println!("{:?}", parser::eval_expr(postfix_expr, &vars));
                         break;
                     }
