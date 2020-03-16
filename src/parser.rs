@@ -1,4 +1,4 @@
-use crate::{Variable, OperatorType, Token};
+use crate::{OperatorType, Token, Variable};
 
 use std::collections::HashMap;
 
@@ -16,36 +16,36 @@ use std::ops;
 pub fn eval_expr(expr: &Expression, vars: &HashMap<String, Variable>) -> Variable {
     let mut stack = Expression::new();
 
-    expr.iter().for_each(|subexpr|{
-        match subexpr {
-            SubExpression::Val(v) => stack.push(SubExpression::Val(v.clone())),
-            SubExpression::Name(string) => stack.push(SubExpression::Val(vars.get(string).unwrap().clone())),
+    expr.iter().for_each(|subexpr| match subexpr {
+        SubExpression::Val(v) => stack.push(SubExpression::Val(v.clone())),
+        SubExpression::Name(string) => {
+            stack.push(SubExpression::Val(vars.get(string).unwrap().clone()))
+        }
 
-            SubExpression::Operator(ty) => {
-                let val1 = match stack.pop().unwrap(){
-                    SubExpression::Val(v) => v,
-                    _ => panic!("not a variable"),
-                };
-                let val2 = match stack.pop().unwrap(){
-                    SubExpression::Val(v) => v,
-                    _ => panic!("not a variable"),
-                };
+        SubExpression::Operator(ty) => {
+            let val1 = match stack.pop().unwrap() {
+                SubExpression::Val(v) => v,
+                _ => panic!("not a variable"),
+            };
+            let val2 = match stack.pop().unwrap() {
+                SubExpression::Val(v) => v,
+                _ => panic!("not a variable"),
+            };
 
-                let v = match ty {
-                    OperatorType::Plus => val2 + val1,
-                    OperatorType::Minus => val2 - val1,
-                    OperatorType::Multiply => val2 * val1,
-                    OperatorType::Divide => val2 / val1,
-                    OperatorType::Exponentiate => val2.exp(val1),
-                    OperatorType::GreaterEqual => Variable::Bool(val2 >= val1),
-                    OperatorType::LessEqual => Variable::Bool(val2 <= val1),
-                    OperatorType::Greater => Variable::Bool(val2 > val1),
-                    OperatorType::Less => Variable::Bool(val2 < val1),
-                    OperatorType::Equal => Variable::Bool(val2 == val1),
-                };
+            let v = match ty {
+                OperatorType::Plus => val2 + val1,
+                OperatorType::Minus => val2 - val1,
+                OperatorType::Multiply => val2 * val1,
+                OperatorType::Divide => val2 / val1,
+                OperatorType::Exponentiate => val2.exp(val1),
+                OperatorType::GreaterEqual => Variable::Bool(val2 >= val1),
+                OperatorType::LessEqual => Variable::Bool(val2 <= val1),
+                OperatorType::Greater => Variable::Bool(val2 > val1),
+                OperatorType::Less => Variable::Bool(val2 < val1),
+                OperatorType::Equal => Variable::Bool(val2 == val1),
+            };
 
-                stack.push(SubExpression::Val(v));
-            }
+            stack.push(SubExpression::Val(v));
         }
     });
 
@@ -77,7 +77,9 @@ impl ops::Add for Variable {
             (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 + v2 as f64),
             (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(v1 as f64 + v2),
             (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1 + v2),
-            (Variable::Str(str1), Variable::Str(str2)) => Variable::Str(format!("{}{}", str1, str2)),
+            (Variable::Str(str1), Variable::Str(str2)) => {
+                Variable::Str(format!("{}{}", str1, str2))
+            }
             _ => panic!("illegal addition"),
         }
     }
