@@ -157,7 +157,6 @@ impl<'a> Lexer<'a> {
     fn read_expr(
         &mut self,
         preceding_tokens: Vec<Token>,
-        vars: &HashMap<String, Variable>,
     ) -> parser::Expression {
         let mut stack: Vec<Token> = Vec::new();
         stack.push(Token::LParen);
@@ -303,12 +302,17 @@ impl<'a> Lexer<'a> {
 
     pub fn read_block(&mut self) -> Vec<String> {
         let mut ret_block: Vec<String> = Vec::new();
+        let mut brace_cnt = 1u16;
         loop {
             let mut line = String::new();
             io::stdin().lock().read_line(&mut line).unwrap();
-            let needs_break = line.contains("}");
-
-            if needs_break {
+            if line.contains("{") {
+                brace_cnt += 1;
+            }
+            if line.contains("}") {
+                brace_cnt -= 1;
+            }
+            if brace_cnt == 0 {
                 break;
             }
             ret_block.push(line);
@@ -338,7 +342,7 @@ fn process_line(mut in_line: String, vars: &mut HashMap<String, Variable>) {
 
         match token {
             Token::While => {
-                let conditional_expr = lexer.read_expr(vec![], &vars);
+                let conditional_expr = lexer.read_expr(vec![]);
                 let block = lexer.read_block();
 
                 while parser::eval_expr(&conditional_expr, &vars) == Variable::Bool(true) {
@@ -350,7 +354,7 @@ fn process_line(mut in_line: String, vars: &mut HashMap<String, Variable>) {
                 IdentType::Let => match lexer.next_token() {
                     Token::Name(lhs) => {
                         if let Token::Assign = lexer.next_token() {
-                            let rhs_expr = lexer.read_expr(vec![], &vars);
+                            let rhs_expr = lexer.read_expr(vec![]);
                             let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
                             vars.insert(lhs, rhs_eval);
                             break;
@@ -378,7 +382,7 @@ fn process_line(mut in_line: String, vars: &mut HashMap<String, Variable>) {
                     if !vars.contains_key(&lhs) {
                         panic!("Assigned to uninitialized variable {}", lhs);
                     }
-                    let rhs_expr = lexer.read_expr(vec![], &vars);
+                    let rhs_expr = lexer.read_expr(vec![]);
                     let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
 
                     let prev_val = vars.get(&lhs).unwrap();
@@ -390,7 +394,7 @@ fn process_line(mut in_line: String, vars: &mut HashMap<String, Variable>) {
                     break;
                 }
 
-                let postfix_expr = lexer.read_expr(vec![token, next_token], &vars);
+                let postfix_expr = lexer.read_expr(vec![token, next_token]);
                 if postfix_expr.len() > 0 {
                     println!("{:?}", parser::eval_expr(&postfix_expr, &vars));
                 }
