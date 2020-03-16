@@ -319,9 +319,15 @@ impl<'a> Lexer<'a> {
 }
 
 pub fn run_block(block: &Vec<String>, vars: &mut HashMap<String, Variable>) {
+    let mut block_vars: HashMap<String, Variable> = vars.clone();
     for line in block {
-        process_line(line.to_string(), vars);
+        process_line(line.to_string(), &mut block_vars);
     }
+    block_vars.iter_mut().for_each(|(k, v)|{
+        if let Some(global_v) = vars.get_mut(k) {
+            *global_v = v.clone();
+        }
+    });
 }
 
 fn process_line(mut in_line: String, vars: &mut HashMap<String, Variable>) {
