@@ -29,6 +29,7 @@ pub enum Variable {
     Str(String),
     Bool(bool),
     Function(SlangFn),
+    Type(String),
     Custom(String, HashMap<String, Variable>),
 }
 
@@ -82,6 +83,7 @@ pub enum IdentType {
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum OperatorType {
+    Cast,
     Plus,
     Minus,
     Multiply,
@@ -291,6 +293,7 @@ impl<'a> Lexer<'a> {
                 } else if is_ident_char(ch) {
                     let ident = self.read_identifier(ch);
                     match ident.as_str() {
+                        "as" => Token::Operator(OperatorType::Cast),
                         "print" => Token::Ident(IdentType::Print),
                         "fn" => Token::Ident(IdentType::Function),
                         "let" => Token::Ident(IdentType::Let),
@@ -309,12 +312,23 @@ impl<'a> Lexer<'a> {
     }
 
     #[allow(clippy::useless_let_if_seq)]
-    pub fn read_next_block() -> Vec<String> {
+    pub fn read_next_block(reader: &mut Option<impl Iterator<Item = Result<String, std::io::Error>> + 'a>) -> Option<Vec<String>> {
         let mut ret_block: Vec<String> = Vec::new();
         let mut brace_cnt = 0u16;
+        let mut end_file = false;
         loop {
             let mut line = String::new();
-            io::stdin().lock().read_line(&mut line).unwrap();
+            match reader {
+                Some(lines) => {
+                    line = if let Some(Ok(ln)) = lines.next() {
+                        ln.to_string()
+                    } else {
+                        end_file = true;
+                        break;
+                    }
+                },
+                None => {io::stdin().lock().read_line(&mut line).unwrap();},
+            }
 
             let mut contains_brace = false;
             if line.contains('{') {
@@ -335,7 +349,11 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        ret_block
+        if end_file {
+            None
+        } else {
+            Some(ret_block)
+        }
     }
 }
 
@@ -409,10 +427,10 @@ fn exec_block(block: Vec<BlockSection>, vars: &mut HashMap<String, Variable>) {
                         Token::While => {
                             let conditional_expr = Lexer::read_expr2(
                                 token_iter
-                                    .clone()
-                                    .cloned()
-                                    .collect::<Vec<Token>>()
-                                    .as_slice(),
+                                .clone()
+                                .cloned()
+                                .collect::<Vec<Token>>()
+                                .as_slice(),
                             );
                             let inner_block = block_iter.next();
 
@@ -422,9 +440,9 @@ fn exec_block(block: Vec<BlockSection>, vars: &mut HashMap<String, Variable>) {
                             {
                                 while parser::eval_expr(&conditional_expr, &inner_vars)
                                     == Variable::Bool(true)
-                                {
-                                    exec_block(inner_block_vec.to_vec(), &mut inner_vars);
-                                }
+                                    {
+                                        exec_block(inner_block_vec.to_vec(), &mut inner_vars);
+                                    }
                             }
 
                             for (k, v) in inner_vars {
@@ -463,39 +481,39 @@ fn exec_block(block: Vec<BlockSection>, vars: &mut HashMap<String, Variable>) {
 
                         // Token::LParen => stack.push(token),
                         Token::Integer(_)
-                        | Token::Float(_)
-                        | Token::Name(_)
-                        | Token::StringLiteral(_)
-                        | Token::Operator(_)
-                        | Token::RParen
-                        | Token::EOF
-                        | Token::LParen => {
-                            if let Some(next_token) = token_iter.next() {
-                                if let (Token::Name(lhs), Token::Assign) =
-                                    (token.clone(), next_token.clone())
-                                {
-                                    if !vars.contains_key(&lhs) {
-                                        panic!("Assigned to uninitialized variable {}", lhs);
-                                    }
-                                    let rhs_expr = Lexer::read_expr2(
-                                        token_iter.cloned().collect::<Vec<Token>>().as_slice(),
-                                    );
-                                    let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
-
-                                    let prev_val = vars.get(&lhs).unwrap();
-                                    if prev_val.same_type(&rhs_eval) {
-                                        vars.insert(lhs, rhs_eval);
-                                    } else {
-                                        panic!(
-                                            "Variable types do not match: {:?}, {:?}",
-                                            lhs, rhs_eval
+                            | Token::Float(_)
+                            | Token::Name(_)
+                            | Token::StringLiteral(_)
+                            | Token::Operator(_)
+                            | Token::RParen
+                            | Token::EOF
+                            | Token::LParen => {
+                                if let Some(next_token) = token_iter.next() {
+                                    if let (Token::Name(lhs), Token::Assign) =
+                                        (token.clone(), next_token.clone())
+                                    {
+                                        if !vars.contains_key(&lhs) {
+                                            panic!("Assigned to uninitialized variable {}", lhs);
+                                        }
+                                        let rhs_expr = Lexer::read_expr2(
+                                            token_iter.cloned().collect::<Vec<Token>>().as_slice(),
                                         );
+                                        let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+
+                                        let prev_val = vars.get(&lhs).unwrap();
+                                        if prev_val.same_type(&rhs_eval) {
+                                            vars.insert(lhs, rhs_eval);
+                                        } else {
+                                            panic!(
+                                                "Variable types do not match: {:?}, {:?}",
+                                                lhs, rhs_eval
+                                            );
+                                        }
+                                        break;
                                     }
-                                    break;
                                 }
+                                break;
                             }
-                            break;
-                        }
 
                         _ => todo!(),
                     }
@@ -585,22 +603,37 @@ fn is_ident_char(ch: char) -> bool {
 }
 
 fn main() {
+    use std::io::BufReader;
+    let args = std::env::args().collect::<Vec<String>>();
+    let filename = args.get(1);
+    let mut reader_lines = filename.map(|name| BufReader::new(std::fs::File::open(name).expect("invalid filename")).lines());
     let mut vars: HashMap<String, Variable> = HashMap::new();
     vars.insert("PI".to_owned(), Variable::Float(std::f64::consts::PI));
+    vars.insert("String".to_owned(), Variable::Type("String".to_owned()));
+    vars.insert("Int".to_owned(), Variable::Type("Int".to_owned()));
+    vars.insert("Float".to_owned(), Variable::Type("Float".to_owned()));
+    vars.insert("Bool".to_owned(), Variable::Type("Bool".to_owned()));
 
     loop {
-        print!("> ");
+        if filename.is_none() {
+            print!("> ");
+        }
         io::stdout().flush().unwrap();
 
-        let block = Lexer::read_next_block();
-        let block = process_block(
-            block
-                .iter()
-                .map(|string| string.as_str())
-                .collect::<Vec<&str>>()
-                .as_slice(),
-        );
-        exec_block(block, &mut vars);
+        let block_res = Lexer::read_next_block(&mut reader_lines);
+        match block_res {
+            Some(block) => {
+                let block = process_block(
+                    block
+                    .iter()
+                    .map(|string| string.as_str())
+                    .collect::<Vec<&str>>()
+                    .as_slice(),
+                );
+                exec_block(block, &mut vars);
+            },
+            None => break,
+        }
         // run_line(line, &mut vars);
     }
 }

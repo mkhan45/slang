@@ -64,4 +64,39 @@ mod tests {
         assert_eq!(vars.get("x").unwrap(), &Variable::Integer(5));
         assert_eq!(vars.get("c").unwrap(), &Variable::Integer(16));
     }
+
+    #[test]
+    fn file_read_test() {
+        use std::io::BufReader;
+
+        let filename = Some("tests/simple_fileread.slang");
+        let mut reader_lines = filename.map(|name| BufReader::new(std::fs::File::open(name).expect("invalid filename")).lines());
+        let mut vars: HashMap<String, Variable> = HashMap::new();
+        vars.insert("PI".to_owned(), Variable::Float(std::f64::consts::PI));
+        vars.insert("String".to_owned(), Variable::Type("String".to_owned()));
+        vars.insert("Int".to_owned(), Variable::Type("Int".to_owned()));
+        vars.insert("Float".to_owned(), Variable::Type("Float".to_owned()));
+        vars.insert("Bool".to_owned(), Variable::Type("Bool".to_owned()));
+
+        loop {
+            io::stdout().flush().unwrap();
+
+            let block_res = Lexer::read_next_block(&mut reader_lines);
+            match block_res {
+                Some(block) => {
+                    let block = process_block(
+                        block
+                        .iter()
+                        .map(|string| string.as_str())
+                        .collect::<Vec<&str>>()
+                        .as_slice(),
+                    );
+                    exec_block(block, &mut vars);
+                },
+                None => break,
+            }
+        }
+
+        assert_eq!(vars.get("x").unwrap(), &Variable::Integer(10));
+    }
 }

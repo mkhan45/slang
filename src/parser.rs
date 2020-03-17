@@ -35,6 +35,7 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
             };
 
             let v = match ty {
+                OperatorType::Cast => val2.cast(&val1),
                 OperatorType::Plus => val2 + val1,
                 OperatorType::Minus => val2 - val1,
                 OperatorType::Multiply => val2 * val1,
@@ -79,9 +80,7 @@ impl ops::Add for Variable {
             (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 + v2 as f64),
             (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(v1 as f64 + v2),
             (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1 + v2),
-            (Variable::Str(str1), Variable::Str(str2)) => {
-                Variable::Str(format!("{}{}", str1, str2))
-            }
+            (Variable::Str(v1), Variable::Str(v2)) => Variable::Str(format!("{}{}", v1, v2)),
             _ => panic!("illegal addition"),
         }
     }
@@ -143,6 +142,17 @@ impl Variable {
             _ => panic!("illegal multiplication"),
         }
     }
+
+    pub fn cast(&self, rhs: &Variable) -> Variable {
+        if let Variable::Type(typename) = rhs {
+            match (self, typename.as_str()) {
+                (Variable::Integer(v1), "String") => Variable::Str(v1.to_string()),
+                _ => todo!(),
+            }
+        } else {
+            panic!("Illegal cast to non type variable");
+        }
+    }
 }
 
 pub fn token_to_subexpr(token: Token) -> SubExpression {
@@ -168,5 +178,6 @@ pub fn operator_precedence(ty: OperatorType) -> u8 {
         OperatorType::GreaterEqual => 0,
         OperatorType::Less => 0,
         OperatorType::Greater => 0,
+        OperatorType::Cast => 0,
     }
 }
