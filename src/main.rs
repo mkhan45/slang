@@ -8,7 +8,15 @@ use std::collections::HashMap;
 mod parser;
 use parser::{Expression, SubExpression};
 
-#[derive(Clone, Debug)]
+mod tests;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SlangFn {
+    args: Vec<String>,
+    block: Vec<BlockSection>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum BlockSection {
     Line(Vec<Token>),
     InnerBlock(Vec<BlockSection>),
@@ -20,6 +28,7 @@ pub enum Variable {
     Float(f64),
     Str(String),
     Bool(bool),
+    Function(SlangFn),
     Custom(String, HashMap<String, Variable>),
 }
 
@@ -63,6 +72,7 @@ pub enum Token {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum IdentType {
+    Print,
     Function,
     Let,
     If,
@@ -281,6 +291,7 @@ impl<'a> Lexer<'a> {
                 } else if is_ident_char(ch) {
                     let ident = self.read_identifier(ch);
                     match ident.as_str() {
+                        "print" => Token::Ident(IdentType::Print),
                         "fn" => Token::Ident(IdentType::Function),
                         "let" => Token::Ident(IdentType::Let),
                         "if" => Token::Ident(IdentType::If),
@@ -328,18 +339,6 @@ impl<'a> Lexer<'a> {
     }
 }
 
-// pub fn run_block(block: &Vec<String>, vars: &mut HashMap<String, Variable>) {
-//     let mut block_vars: HashMap<String, Variable> = vars.clone();
-//     for line in block {
-//         run_line(line.to_string(), &mut block_vars);
-//     }
-//     block_vars.iter_mut().for_each(|(k, v)| {
-//         if let Some(global_v) = vars.get_mut(k) {
-//             *global_v = v.clone();
-//         }
-//     });
-// }
-
 fn process_block(in_block: &[&str]) -> Vec<BlockSection> {
     let mut blocks: Vec<BlockSection> = Vec::new();
 
@@ -382,7 +381,7 @@ fn process_block(in_block: &[&str]) -> Vec<BlockSection> {
                     num_lines += 1;
                     next_line = line_iterator.next();
                 }
-                let block = process_block(&in_block[line_num + 1 .. line_num + 1 + num_lines]);
+                let block = process_block(&in_block[line_num + 1..line_num + 1 + num_lines]);
 
                 blocks.push(BlockSection::InnerBlock(block));
 
@@ -416,7 +415,6 @@ fn exec_block(block: Vec<BlockSection>, vars: &mut HashMap<String, Variable>) {
                                     .as_slice(),
                             );
                             let inner_block = block_iter.next();
-                            dbg!(inner_block.clone());
 
                             let mut inner_vars = vars.clone();
 
@@ -453,6 +451,13 @@ fn exec_block(block: Vec<BlockSection>, vars: &mut HashMap<String, Variable>) {
                                 }
                                 _ => panic!("invalid assign"),
                             },
+                            IdentType::Print => {
+                                let expr = Lexer::read_expr2(
+                                    token_iter.cloned().collect::<Vec<Token>>().as_slice(),
+                                );
+                                println!("{:?}", parser::eval_expr(&expr, &vars));
+                                break;
+                            }
                             _ => todo!(),
                         },
 
@@ -487,16 +492,6 @@ fn exec_block(block: Vec<BlockSection>, vars: &mut HashMap<String, Variable>) {
                                         );
                                     }
                                     break;
-                                }
-
-                                let preceding_slice = [token, next_token];
-                                let preceding_iter = preceding_slice.iter().cloned();
-                                let chained = preceding_iter.chain(token_iter).cloned();
-                                let vec = chained.collect::<Vec<Token>>();
-                                let slice = vec.as_slice();
-                                let postfix_expr = Lexer::read_expr2(slice);
-                                if !postfix_expr.is_empty() {
-                                    println!("{:?}", parser::eval_expr(&postfix_expr, &vars));
                                 }
                             }
                             break;
