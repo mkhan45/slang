@@ -365,10 +365,24 @@ fn process_block(in_block: &[&str]) -> Vec<BlockSection> {
                 line.push(Token::EOF);
                 blocks.push(BlockSection::Line(line.clone()));
 
-                let block = process_block(&in_block[line_num + 1..]);
-                while !line_iterator.next().unwrap().contains('}') {
-                    continue;
+                let mut brace_cnt = 1;
+                let mut num_lines = 0;
+                let mut next_line = line_iterator.next();
+                while let Some(line) = next_line {
+                    if line.contains('{') {
+                        brace_cnt += 1;
+                    }
+                    if line.contains('}') {
+                        brace_cnt -= 1;
+                    }
+                    if brace_cnt == 0 {
+                        break;
+                    }
+
+                    num_lines += 1;
+                    next_line = line_iterator.next();
                 }
+                let block = process_block(&in_block[line_num + 1 .. line_num + 1 + num_lines]);
 
                 blocks.push(BlockSection::InnerBlock(block));
 
@@ -402,6 +416,7 @@ fn exec_block(block: Vec<BlockSection>, vars: &mut HashMap<String, Variable>) {
                                     .as_slice(),
                             );
                             let inner_block = block_iter.next();
+                            dbg!(inner_block.clone());
 
                             let mut inner_vars = vars.clone();
 
