@@ -3,8 +3,7 @@ while x < 10 {
    let y = 1
    let row_str = ""
    while y < 10 {
-      let product = x * y
-      row_str = row_str + "     " + product as String
+      row_str = row_str + "     " + (x * y) as String
       y = y + 1
    }
    print(row_str)

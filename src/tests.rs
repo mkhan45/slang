@@ -66,9 +66,9 @@ mod tests {
         let block = vec![
             "let a = 5".to_string(),
             "let b = 5 * 10".to_string(),
-            "let c = 5 * 10 + 5".to_string(),
-            "let d = 5 * (10 + 5)".to_string(),
-            "let e = 5 + 10 * 5".to_string(),
+            "let c = 5 * 10 + 3".to_string(),
+            "let d = 5 * (10 + 3)".to_string(),
+            "let e = 5 + 10 * 3".to_string(),
         ];
         let block = process_block(
             block.iter()
@@ -80,9 +80,9 @@ mod tests {
 
         assert_eq!(vars.get("a").unwrap(), &Variable::Integer(5));
         assert_eq!(vars.get("b").unwrap(), &Variable::Integer(5 * 10));
-        assert_eq!(vars.get("c").unwrap(), &Variable::Integer(5 * 10 + 5));
-        assert_eq!(vars.get("d").unwrap(), &Variable::Integer(5 * (10 + 5)));
-        assert_eq!(vars.get("e").unwrap(), &Variable::Integer(5 + 10 * 5));
+        assert_eq!(vars.get("c").unwrap(), &Variable::Integer(5 * 10 + 3));
+        assert_eq!(vars.get("d").unwrap(), &Variable::Integer(5 * (10 + 3)));
+        assert_eq!(vars.get("e").unwrap(), &Variable::Integer(5 + 10 * 3));
     }
 
     #[test]

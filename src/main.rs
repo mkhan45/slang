@@ -209,7 +209,7 @@ impl<'a> Lexer<'a> {
                     use parser::operator_precedence;
                     let mut last_val = stack.pop().unwrap();
                     while let Token::Operator(stack_ty) = last_val {
-                        if !operator_precedence(stack_ty) > operator_precedence(token_ty) {
+                        if operator_precedence(stack_ty) > operator_precedence(token_ty) {
                             break;
                         }
                         postfix_expr.insert(i, SubExpression::Operator(stack_ty));
@@ -227,7 +227,9 @@ impl<'a> Lexer<'a> {
                         i += 1;
                         last_val = stack.pop().unwrap();
                     }
-                    break;
+                    if token != Token::RParen {
+                        break;
+                    }
                 }
 
                 _ => {
