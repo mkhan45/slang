@@ -2,7 +2,7 @@ use crate::{OperatorType, Token, Variable};
 
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum SubExpression {
     Val(Variable),
     Operator(OperatorType),
@@ -13,22 +13,24 @@ pub type Expression = Vec<SubExpression>;
 
 use std::ops;
 
-pub fn eval_expr(expr: &Expression, vars: &HashMap<String, Variable>) -> Variable {
-    let mut stack = Expression::new();
+pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Variable {
+    let mut stack = Expression::with_capacity(8);
 
     expr.iter().for_each(|subexpr| match subexpr {
         SubExpression::Val(v) => stack.push(SubExpression::Val(v.clone())),
-        SubExpression::Name(string) => {
-            stack.push(SubExpression::Val(vars.get(string).unwrap().clone()))
-        }
+        SubExpression::Name(string) => stack.push(SubExpression::Val(
+            vars.get(string)
+                .unwrap_or_else(|| panic!("Uninitialized variable: {}", string))
+                .clone(),
+        )),
 
         SubExpression::Operator(ty) => {
-            let val1 = match stack.pop().unwrap() {
-                SubExpression::Val(v) => v,
+            let val1 = match stack.pop() {
+                Some(SubExpression::Val(v)) => v,
                 _ => panic!("not a variable"),
             };
-            let val2 = match stack.pop().unwrap() {
-                SubExpression::Val(v) => v,
+            let val2 = match stack.pop() {
+                Some(SubExpression::Val(v)) => v,
                 _ => panic!("not a variable"),
             };
 
@@ -49,8 +51,8 @@ pub fn eval_expr(expr: &Expression, vars: &HashMap<String, Variable>) -> Variabl
         }
     });
 
-    match stack.pop().unwrap() {
-        SubExpression::Val(v) => v,
+    match stack.pop() {
+        Some(SubExpression::Val(v)) => v,
         _ => panic!("expr eval'd to not variable"),
     }
 }
@@ -63,7 +65,7 @@ impl PartialOrd for Variable {
             (Variable::Float(v1), Variable::Integer(v2)) => v1.partial_cmp(&(*v2 as f64)),
             (Variable::Integer(v1), Variable::Float(v2)) => (*v1 as f64).partial_cmp(v2),
             (Variable::Float(v1), Variable::Float(v2)) => v1.partial_cmp(v2),
-            _ => panic!("illegal comparison"),
+            _ => None,
         }
     }
 }

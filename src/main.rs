@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, Read, Write};
+use std::io::{self, BufRead, Write};
 
 use std::iter::Peekable;
 use std::str::Chars;
@@ -7,6 +7,12 @@ use std::collections::HashMap;
 
 mod parser;
 use parser::{Expression, SubExpression};
+
+#[derive(Clone, Debug)]
+pub enum BlockSection {
+    Line(Vec<Token>),
+    InnerBlock(Vec<BlockSection>),
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Variable {
@@ -64,7 +70,7 @@ pub enum IdentType {
     Return,
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Debug)]
 pub enum OperatorType {
     Plus,
     Minus,
@@ -76,6 +82,12 @@ pub enum OperatorType {
     Greater,
     Less,
     Equal,
+}
+
+impl PartialOrd for OperatorType {
+    fn partial_cmp(&self, _rhs: &OperatorType) -> Option<std::cmp::Ordering> {
+        None
+    }
 }
 
 struct Lexer<'a> {
@@ -108,7 +120,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_identifier(&mut self, first: char) -> String {
-        let mut ident = String::new();
+        let mut ident = String::with_capacity(10);
         ident.push(first);
 
         while self.peek_is_ident_char() {
@@ -131,7 +143,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_num(&mut self, first: char) -> String {
-        let mut literal = String::new();
+        let mut literal = String::with_capacity(5);
         literal.push(first);
 
         while self.peek_is_numeric_char() {
@@ -154,46 +166,31 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_expr(
-        &mut self,
-        preceding_tokens: Vec<Token>,
-    ) -> parser::Expression {
+    fn read_expr2(tokens: &[Token]) -> parser::Expression {
         let mut stack: Vec<Token> = Vec::new();
         stack.push(Token::LParen);
-
         let mut postfix_expr = Expression::new();
+        let mut i = 0;
 
-        let mut j = 0;
-
-        let mut preceding_index = 0;
-
-        loop {
-            let token = if preceding_index >= preceding_tokens.len() {
-                self.next_token()
-            } else {
-                let token = preceding_tokens[preceding_index].clone();
-                preceding_index += 1;
-                token
-            };
-
+        for token in tokens.iter().cloned() {
             match token {
                 Token::LParen => stack.push(token),
 
                 Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) => {
                     match token {
-                        Token::Name(name) => postfix_expr.insert(j, SubExpression::Name(name)),
+                        Token::Name(name) => postfix_expr.insert(i, SubExpression::Name(name)),
                         Token::Integer(int) => {
-                            postfix_expr.insert(j, SubExpression::Val(Variable::Integer(int)))
+                            postfix_expr.insert(i, SubExpression::Val(Variable::Integer(int)))
                         }
                         Token::Float(float) => {
-                            postfix_expr.insert(j, SubExpression::Val(Variable::Float(float)))
+                            postfix_expr.insert(i, SubExpression::Val(Variable::Float(float)))
                         }
                         Token::StringLiteral(string) => {
-                            postfix_expr.insert(j, SubExpression::Val(Variable::Str(string)))
+                            postfix_expr.insert(i, SubExpression::Val(Variable::Str(string)))
                         }
                         _ => panic!(),
                     }
-                    j += 1;
+                    i += 1;
                 }
 
                 Token::Operator(token_ty) => {
@@ -203,8 +200,8 @@ impl<'a> Lexer<'a> {
                         if !operator_precedence(stack_ty) > operator_precedence(token_ty) {
                             break;
                         }
-                        postfix_expr.insert(j, SubExpression::Operator(stack_ty));
-                        j += 1;
+                        postfix_expr.insert(i, SubExpression::Operator(stack_ty));
+                        i += 1;
                         last_val = stack.pop().unwrap();
                     }
                     stack.push(last_val);
@@ -214,8 +211,8 @@ impl<'a> Lexer<'a> {
                 Token::RParen | Token::EOF | Token::LBrace | Token::Semicolon => {
                     let mut last_val = stack.pop().unwrap();
                     while last_val != Token::LParen {
-                        postfix_expr.insert(j, parser::token_to_subexpr(last_val));
-                        j += 1;
+                        postfix_expr.insert(i, parser::token_to_subexpr(last_val));
+                        i += 1;
                         last_val = stack.pop().unwrap();
                     }
                     break;
@@ -270,7 +267,7 @@ impl<'a> Lexer<'a> {
                 }
             }
             Some('\"') => Token::StringLiteral(self.read_string_literal()),
-            Some(ch @ _) => {
+            Some(ch) => {
                 if ch.is_numeric() {
                     let read_number = self.read_num(ch);
 
@@ -300,128 +297,300 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn read_block(&mut self) -> Vec<String> {
+    #[allow(clippy::useless_let_if_seq)]
+    pub fn read_next_block() -> Vec<String> {
         let mut ret_block: Vec<String> = Vec::new();
-        let mut brace_cnt = 1u16;
+        let mut brace_cnt = 0u16;
         loop {
             let mut line = String::new();
             io::stdin().lock().read_line(&mut line).unwrap();
-            if line.contains("{") {
+
+            let mut contains_brace = false;
+            if line.contains('{') {
                 brace_cnt += 1;
+                contains_brace = true;
             }
-            if line.contains("}") {
+            if line.contains('}') {
                 brace_cnt -= 1;
+                if brace_cnt == 0 {
+                    ret_block.push(line);
+                    break;
+                }
             }
-            if brace_cnt == 0 {
+
+            ret_block.push(line);
+            if !contains_brace && brace_cnt == 0 {
                 break;
             }
-            ret_block.push(line);
         }
 
         ret_block
     }
 }
 
-pub fn run_block(block: &Vec<String>, vars: &mut HashMap<String, Variable>) {
-    let mut block_vars: HashMap<String, Variable> = vars.clone();
-    for line in block {
-        process_line(line.to_string(), &mut block_vars);
-    }
-    block_vars.iter_mut().for_each(|(k, v)|{
-        if let Some(global_v) = vars.get_mut(k) {
-            *global_v = v.clone();
-        }
-    });
-}
+// pub fn run_block(block: &Vec<String>, vars: &mut HashMap<String, Variable>) {
+//     let mut block_vars: HashMap<String, Variable> = vars.clone();
+//     for line in block {
+//         run_line(line.to_string(), &mut block_vars);
+//     }
+//     block_vars.iter_mut().for_each(|(k, v)| {
+//         if let Some(global_v) = vars.get_mut(k) {
+//             *global_v = v.clone();
+//         }
+//     });
+// }
 
-fn process_line(mut in_line: String, vars: &mut HashMap<String, Variable>) {
-    let mut lexer = Lexer::new(&mut in_line);
+fn process_block(in_block: &[&str]) -> Vec<BlockSection> {
+    let mut blocks: Vec<BlockSection> = Vec::new();
 
-    loop {
-        let token = lexer.next_token();
+    let mut line_iterator = in_block.iter();
+    let mut line_num = 0;
+    while let Some(block_line) = line_iterator.next() {
+        let mut lexer = Lexer::new(&block_line);
+        let mut line: Vec<Token> = Vec::new();
 
-        match token {
-            Token::While => {
-                let conditional_expr = lexer.read_expr(vec![]);
-                let block = lexer.read_block();
-
-                while parser::eval_expr(&conditional_expr, &vars) == Variable::Bool(true) {
-                    run_block(&block, vars);
-                }
-            }
-
-            Token::Ident(ty) => match ty {
-                IdentType::Let => match lexer.next_token() {
-                    Token::Name(lhs) => {
-                        if let Token::Assign = lexer.next_token() {
-                            let rhs_expr = lexer.read_expr(vec![]);
-                            let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
-                            vars.insert(lhs, rhs_eval);
-                            break;
-                        } else {
-                            panic!("syntax error after let token")
-                        }
-                    }
-                    _ => panic!("invalid assign"),
-                },
-                _ => todo!(),
-            },
-
-            // Token::LParen => stack.push(token),
-            Token::Integer(_)
-            | Token::Float(_)
-            | Token::Name(_)
-            | Token::StringLiteral(_)
-            | Token::Operator(_)
-            | Token::RParen
-            | Token::EOF
-            | Token::LParen => {
-                lexer.skip_whitespace();
-                let next_token = lexer.next_token();
-                if let (Token::Name(lhs), Token::Assign) = (token.clone(), next_token.clone()) {
-                    if !vars.contains_key(&lhs) {
-                        panic!("Assigned to uninitialized variable {}", lhs);
-                    }
-                    let rhs_expr = lexer.read_expr(vec![]);
-                    let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
-
-                    let prev_val = vars.get(&lhs).unwrap();
-                    if prev_val.same_type(&rhs_eval) {
-                        vars.insert(lhs, rhs_eval);
-                    } else {
-                        panic!("Variable types do not match: {:?}, {:?}", lhs, rhs_eval);
-                    }
-                    break;
-                }
-
-                let postfix_expr = lexer.read_expr(vec![token, next_token]);
-                if postfix_expr.len() > 0 {
-                    println!("{:?}", parser::eval_expr(&postfix_expr, &vars));
+        loop {
+            let token = lexer.next_token();
+            if token == Token::EOF {
+                if !line.is_empty() {
+                    line.push(Token::EOF);
+                    blocks.push(BlockSection::Line(line.clone()));
                 }
                 break;
             }
 
-            _ => todo!(),
+            if token != Token::LBrace && token != Token::RBrace {
+                line.push(token);
+            } else if token == Token::LBrace {
+                line.push(Token::EOF);
+                blocks.push(BlockSection::Line(line.clone()));
+
+                let block = process_block(&in_block[line_num + 1..]);
+                while !line_iterator.next().unwrap().contains('}') {
+                    continue;
+                }
+
+                blocks.push(BlockSection::InnerBlock(block));
+
+                line = Vec::new();
+            } else if token == Token::RBrace {
+                break;
+            }
+        }
+
+        line_num += 1;
+    }
+    // dbg!(blocks.clone());
+
+    blocks
+}
+
+fn exec_block(block: Vec<BlockSection>, vars: &mut HashMap<String, Variable>) {
+    let mut block_iter = block.into_iter();
+    while let Some(block_section) = block_iter.next() {
+        match block_section {
+            BlockSection::Line(tokens) => {
+                let mut token_iter = tokens.iter().peekable();
+                while let Some(token) = token_iter.next() {
+                    match token {
+                        Token::While => {
+                            let conditional_expr = Lexer::read_expr2(
+                                token_iter
+                                    .clone()
+                                    .cloned()
+                                    .collect::<Vec<Token>>()
+                                    .as_slice(),
+                            );
+                            let inner_block = block_iter.next();
+
+                            let mut inner_vars = vars.clone();
+
+                            if let BlockSection::InnerBlock(inner_block_vec) = inner_block.unwrap()
+                            {
+                                while parser::eval_expr(&conditional_expr, &inner_vars)
+                                    == Variable::Bool(true)
+                                {
+                                    exec_block(inner_block_vec.to_vec(), &mut inner_vars);
+                                }
+                            }
+
+                            for (k, v) in inner_vars {
+                                if let Some(old_v) = vars.get_mut(&k) {
+                                    *old_v = v;
+                                }
+                            }
+                            break;
+                        }
+
+                        Token::Ident(ty) => match ty {
+                            IdentType::Let => match token_iter.next().unwrap() {
+                                Token::Name(lhs) => {
+                                    if let Token::Assign = token_iter.next().unwrap() {
+                                        let rhs_expr = Lexer::read_expr2(
+                                            token_iter.cloned().collect::<Vec<Token>>().as_slice(),
+                                        );
+                                        let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+                                        vars.insert(lhs.to_string(), rhs_eval);
+                                        break;
+                                    } else {
+                                        panic!("syntax error after let token")
+                                    }
+                                }
+                                _ => panic!("invalid assign"),
+                            },
+                            _ => todo!(),
+                        },
+
+                        // Token::LParen => stack.push(token),
+                        Token::Integer(_)
+                        | Token::Float(_)
+                        | Token::Name(_)
+                        | Token::StringLiteral(_)
+                        | Token::Operator(_)
+                        | Token::RParen
+                        | Token::EOF
+                        | Token::LParen => {
+                            if let Some(next_token) = token_iter.next() {
+                                if let (Token::Name(lhs), Token::Assign) =
+                                    (token.clone(), next_token.clone())
+                                {
+                                    if !vars.contains_key(&lhs) {
+                                        panic!("Assigned to uninitialized variable {}", lhs);
+                                    }
+                                    let rhs_expr = Lexer::read_expr2(
+                                        token_iter.cloned().collect::<Vec<Token>>().as_slice(),
+                                    );
+                                    let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+
+                                    let prev_val = vars.get(&lhs).unwrap();
+                                    if prev_val.same_type(&rhs_eval) {
+                                        vars.insert(lhs, rhs_eval);
+                                    } else {
+                                        panic!(
+                                            "Variable types do not match: {:?}, {:?}",
+                                            lhs, rhs_eval
+                                        );
+                                    }
+                                    break;
+                                }
+
+                                let preceding_slice = [token, next_token];
+                                let preceding_iter = preceding_slice.iter().cloned();
+                                let chained = preceding_iter.chain(token_iter).cloned();
+                                let vec = chained.collect::<Vec<Token>>();
+                                let slice = vec.as_slice();
+                                let postfix_expr = Lexer::read_expr2(slice);
+                                if !postfix_expr.is_empty() {
+                                    println!("{:?}", parser::eval_expr(&postfix_expr, &vars));
+                                }
+                            }
+                            break;
+                        }
+
+                        _ => todo!(),
+                    }
+                }
+            }
+            BlockSection::InnerBlock(blocks) => {
+                exec_block(blocks, vars);
+            }
         }
     }
 }
+
+// fn run_line(mut in_line: String, vars: &mut HashMap<String, Variable>) {
+//     let mut lexer = Lexer::new(&mut in_line);
+
+//     loop {
+//         let token = lexer.next_token();
+
+//         match token {
+//             Token::While => {
+//                 let conditional_expr = lexer.read_expr(vec![]);
+//                 let block = lexer.read_block();
+
+//                 while parser::eval_expr(&conditional_expr, &vars) == Variable::Bool(true) {
+//                     run_block(&block, vars);
+//                 }
+//             }
+
+//             Token::Ident(ty) => match ty {
+//                 IdentType::Let => match lexer.next_token() {
+//                     Token::Name(lhs) => {
+//                         if let Token::Assign = lexer.next_token() {
+//                             let rhs_expr = lexer.read_expr(vec![]);
+//                             let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+//                             vars.insert(lhs, rhs_eval);
+//                             break;
+//                         } else {
+//                             panic!("syntax error after let token")
+//                         }
+//                     }
+//                     _ => panic!("invalid assign"),
+//                 },
+//                 _ => todo!(),
+//             },
+
+//             // Token::LParen => stack.push(token),
+//             Token::Integer(_)
+//                 | Token::Float(_)
+//                 | Token::Name(_)
+//                 | Token::StringLiteral(_)
+//                 | Token::Operator(_)
+//                 | Token::RParen
+//                 | Token::EOF
+//                 | Token::LParen => {
+//                     lexer.skip_whitespace();
+//                     let next_token = lexer.next_token();
+//                     if let (Token::Name(lhs), Token::Assign) = (token.clone(), next_token.clone()) {
+//                         if !vars.contains_key(&lhs) {
+//                             panic!("Assigned to uninitialized variable {}", lhs);
+//                         }
+//                         let rhs_expr = lexer.read_expr(vec![]);
+//                         let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+
+//                         let prev_val = vars.get(&lhs).unwrap();
+//                         if prev_val.same_type(&rhs_eval) {
+//                             vars.insert(lhs, rhs_eval);
+//                         } else {
+//                             panic!("Variable types do not match: {:?}, {:?}", lhs, rhs_eval);
+//                         }
+//                         break;
+//                     }
+
+//                     let postfix_expr = lexer.read_expr(vec![token, next_token]);
+//                     if postfix_expr.len() > 0 {
+//                         println!("{:?}", parser::eval_expr(&postfix_expr, &vars));
+//                     }
+//                     break;
+//                 }
+
+//             _ => todo!(),
+//         }
+//     }
+// }
 
 fn is_ident_char(ch: char) -> bool {
     ch.is_alphanumeric() || ch == '_'
 }
 
 fn main() {
-    let stdin = io::stdin();
-
     let mut vars: HashMap<String, Variable> = HashMap::new();
     vars.insert("PI".to_owned(), Variable::Float(std::f64::consts::PI));
 
     loop {
-        print!(">> ");
+        print!("> ");
         io::stdout().flush().unwrap();
 
-        let mut line = String::new();
-        stdin.lock().read_line(&mut line).unwrap();
-        process_line(line, &mut vars);
+        let block = Lexer::read_next_block();
+        let block = process_block(
+            block
+                .iter()
+                .map(|string| string.as_str())
+                .collect::<Vec<&str>>()
+                .as_slice(),
+        );
+        exec_block(block, &mut vars);
+        // run_line(line, &mut vars);
     }
 }
