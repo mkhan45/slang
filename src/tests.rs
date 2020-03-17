@@ -18,6 +18,32 @@ mod tests {
         }
     }
 
+    macro_rules! run_file {
+        ($filename: expr, $vars: expr) => {
+            use std::io::BufReader;
+            let mut reader_lines = $filename.map(|name| BufReader::new(std::fs::File::open(name).expect("invalid filename")).lines());
+
+            loop {
+                io::stdout().flush().unwrap();
+
+                let block_res = Lexer::read_next_block(&mut reader_lines);
+                match block_res {
+                    Some(block) => {
+                        let block = process_block(
+                            block
+                            .iter()
+                            .map(|string| string.as_str())
+                            .collect::<Vec<&str>>()
+                            .as_slice(),
+                        );
+                        exec_block(block, &mut $vars);
+                    },
+                    None => break,
+                }
+            }
+        }
+    }
+
     #[test]
     fn assign() {
         let mut vars: HashMap<String, Variable> = default_vars!();
@@ -124,31 +150,33 @@ mod tests {
 
     #[test]
     fn file_read_test() {
-        use std::io::BufReader;
-
         let filename = Some("tests/simple_fileread.slang");
-        let mut reader_lines = filename.map(|name| BufReader::new(std::fs::File::open(name).expect("invalid filename")).lines());
         let mut vars: HashMap<String, Variable> = default_vars!();
-
-        loop {
-            io::stdout().flush().unwrap();
-
-            let block_res = Lexer::read_next_block(&mut reader_lines);
-            match block_res {
-                Some(block) => {
-                    let block = process_block(
-                        block
-                        .iter()
-                        .map(|string| string.as_str())
-                        .collect::<Vec<&str>>()
-                        .as_slice(),
-                    );
-                    exec_block(block, &mut vars);
-                },
-                None => break,
-            }
-        }
+        run_file!(filename, vars);
 
         assert_eq!(vars.get("x").unwrap(), &Variable::Integer(10));
+    }
+
+    #[test]
+    fn fib_test() {
+        fn fib(n: isize) -> isize{
+            let mut a = 1isize;
+            let mut b = 1isize;
+
+            (0..n).for_each(|_|{
+                let c = b;
+                b = a + b;
+                a = c;
+            });
+
+            a
+        }
+
+        let filename = Some("tests/fib_fast.slang");
+        let mut vars: HashMap<String, Variable> = default_vars!();
+
+        run_file!(filename, vars);
+
+        assert_eq!(vars.get("a").unwrap(), &Variable::Integer(fib(24)));
     }
 }
