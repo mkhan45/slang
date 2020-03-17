@@ -195,7 +195,6 @@ impl<'a> Lexer<'a> {
         let mut stack: Vec<Token> = Vec::with_capacity(8);
         stack.push(Token::LParen);
         let mut postfix_expr = Expression::new();
-        let mut i = 0;
 
         for token in token_iter {
             match token {
@@ -204,19 +203,18 @@ impl<'a> Lexer<'a> {
                 Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) => {
                     match token {
                         Token::Name(name) => {
-                            postfix_expr.insert(i, SubExpression::Name(name.clone()))
+                            postfix_expr.push(SubExpression::Name(name.clone()))
                         }
                         Token::Integer(int) => {
-                            postfix_expr.insert(i, SubExpression::Val(Variable::Integer(*int)))
+                            postfix_expr.push(SubExpression::Val(Variable::Integer(*int)))
                         }
                         Token::Float(float) => {
-                            postfix_expr.insert(i, SubExpression::Val(Variable::Float(*float)))
+                            postfix_expr.push(SubExpression::Val(Variable::Float(*float)))
                         }
                         Token::StringLiteral(string) => postfix_expr
-                            .insert(i, SubExpression::Val(Variable::Str(string.clone()))),
+                            .push(SubExpression::Val(Variable::Str(string.clone()))),
                         _ => panic!(),
                     }
-                    i += 1;
                 }
 
                 Token::Operator(token_ty) => {
@@ -226,8 +224,7 @@ impl<'a> Lexer<'a> {
                         if operator_precedence(stack_ty) > operator_precedence(*token_ty) {
                             break;
                         }
-                        postfix_expr.insert(i, SubExpression::Operator(stack_ty));
-                        i += 1;
+                        postfix_expr.push(SubExpression::Operator(stack_ty));
                         last_val = stack.pop().unwrap();
                     }
                     stack.push(last_val);
@@ -237,8 +234,7 @@ impl<'a> Lexer<'a> {
                 Token::RParen | Token::EOF | Token::LBrace | Token::Semicolon => {
                     let mut last_val = stack.pop().unwrap();
                     while last_val != Token::LParen {
-                        postfix_expr.insert(i, parser::token_to_subexpr(last_val));
-                        i += 1;
+                        postfix_expr.push(parser::token_to_subexpr(last_val));
                         last_val = stack.pop().unwrap();
                     }
                     if token != &Token::RParen {
