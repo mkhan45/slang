@@ -168,16 +168,16 @@ pub fn token_to_subexpr(token: Token) -> SubExpression {
 
 pub fn operator_precedence(ty: OperatorType) -> u8 {
     match ty {
-        OperatorType::Plus => 1,
-        OperatorType::Minus => 1,
-        OperatorType::Multiply => 2,
-        OperatorType::Divide => 2,
-        OperatorType::Exponentiate => 3,
-        OperatorType::Equal => 3,
-        OperatorType::LessEqual => 0,
-        OperatorType::GreaterEqual => 0,
-        OperatorType::Less => 0,
-        OperatorType::Greater => 0,
+        OperatorType::Plus => 4,
+        OperatorType::Minus => 4,
+        OperatorType::Multiply => 3,
+        OperatorType::Divide => 3,
+        OperatorType::Exponentiate => 2,
+        OperatorType::Equal => 1,
+        OperatorType::LessEqual => 1,
+        OperatorType::GreaterEqual => 1,
+        OperatorType::Less => 1,
+        OperatorType::Greater => 1,
         OperatorType::Cast => 0,
     }
 }
