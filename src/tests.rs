@@ -1,26 +1,13 @@
 #[cfg(test)]
 #[rustfmt::skip]
-mod tests {
+pub mod tests {
     use std::collections::HashMap;
     use crate::*;
 
-    macro_rules! default_vars {
-        () => {
-            {
-                let mut vars: HashMap<String, Variable> = HashMap::new();
-                vars.insert("PI".to_owned(), Variable::Float(std::f64::consts::PI));
-                vars.insert("String".to_owned(), Variable::Type("String".to_owned()));
-                vars.insert("Int".to_owned(), Variable::Type("Int".to_owned()));
-                vars.insert("Float".to_owned(), Variable::Type("Float".to_owned()));
-                vars.insert("Bool".to_owned(), Variable::Type("Bool".to_owned()));
-                vars
-            }
-        }
-    }
-
     macro_rules! run_file {
         ($filename: expr, $vars: expr) => {
-            use std::io::BufReader;
+            use std::io::{BufReader, Write};
+
             let mut reader_lines = $filename.map(|name| BufReader::new(std::fs::File::open(name).expect("invalid filename")).lines());
 
             loop {
@@ -149,8 +136,17 @@ mod tests {
     }
 
     #[test]
-    fn file_read_test() {
+    fn simple_fileread() {
         let filename = Some("tests/simple_fileread.slang");
+        let mut vars: HashMap<String, Variable> = default_vars!();
+        run_file!(filename, vars);
+
+        assert_eq!(vars.get("x").unwrap(), &Variable::Integer(5));
+    }
+
+    #[test]
+    fn multi_table() {
+        let filename = Some("tests/multi_table.slang");
         let mut vars: HashMap<String, Variable> = default_vars!();
         run_file!(filename, vars);
 
@@ -158,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn fib_test() {
+    pub fn fib_test() {
         fn fib(n: isize) -> isize{
             let mut a = 1isize;
             let mut b = 1isize;
