@@ -60,6 +60,7 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
 
 use std::cmp::Ordering;
 impl PartialOrd for Variable {
+    #[inline]
     fn partial_cmp(&self, rhs: &Variable) -> Option<Ordering> {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => v1.partial_cmp(v2),
@@ -74,6 +75,7 @@ impl PartialOrd for Variable {
 impl ops::Add for Variable {
     type Output = Variable;
 
+    #[inline]
     fn add(self, rhs: Variable) -> Self::Output {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1 + v2),
@@ -89,6 +91,7 @@ impl ops::Add for Variable {
 impl ops::Sub for Variable {
     type Output = Variable;
 
+    #[inline]
     fn sub(self, rhs: Variable) -> Self::Output {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1 - v2),
@@ -104,6 +107,7 @@ impl ops::Sub for Variable {
 impl ops::Mul for Variable {
     type Output = Variable;
 
+    #[inline]
     fn mul(self, rhs: Variable) -> Self::Output {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1 * v2),
@@ -119,6 +123,7 @@ impl ops::Mul for Variable {
 impl ops::Div for Variable {
     type Output = Variable;
 
+    #[inline]
     fn div(self, rhs: Variable) -> Self::Output {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1 / v2),
@@ -132,6 +137,7 @@ impl ops::Div for Variable {
 }
 
 impl Variable {
+    #[inline]
     pub fn exp(self, rhs: Variable) -> Variable {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1.pow(v2 as u32)),
@@ -155,6 +161,7 @@ impl Variable {
     }
 }
 
+#[inline]
 pub fn token_to_subexpr(token: Token) -> SubExpression {
     match token {
         Token::Integer(int) => SubExpression::Val(Variable::Integer(int)),

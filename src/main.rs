@@ -1,7 +1,7 @@
 use slang::*;
 
 use std::collections::HashMap;
-use std::io::{self, BufRead, Write, BufReader};
+use std::io::{self, BufRead, BufReader, Write};
 
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
@@ -26,7 +26,7 @@ fn main() {
                         .collect::<Vec<&str>>()
                         .as_slice(),
                 );
-                exec_block(block, &mut vars);
+                exec_block(&block, &mut vars);
             }
             None => break,
         }

@@ -23,7 +23,7 @@ pub mod tests {
                             .collect::<Vec<&str>>()
                             .as_slice(),
                         );
-                        exec_block(block, &mut $vars);
+                        exec_block(&block, &mut $vars);
                     },
                     None => break,
                 }
@@ -43,7 +43,7 @@ pub mod tests {
             .collect::<Vec<&str>>()
             .as_slice(),
         );
-        exec_block(block, &mut vars);
+        exec_block(&block, &mut vars);
         assert_eq!(vars.get("x").unwrap(), &Variable::Integer(5));
     }
 
@@ -63,7 +63,7 @@ pub mod tests {
             .collect::<Vec<&str>>()
             .as_slice(),
         );
-        exec_block(block, &mut vars);
+        exec_block(&block, &mut vars);
 
         assert_eq!(vars.get("a").unwrap(), &Variable::Integer(5));
         assert_eq!(vars.get("b").unwrap(), &Variable::Integer(5 * 10));
@@ -85,7 +85,7 @@ pub mod tests {
             .collect::<Vec<&str>>()
             .as_slice(),
         );
-        exec_block(block, &mut vars);
+        exec_block(&block, &mut vars);
 
         assert_eq!(vars.get("a").unwrap(), &Variable::Str("5".to_string()));
     }
@@ -105,7 +105,7 @@ pub mod tests {
             .collect::<Vec<&str>>()
             .as_slice(),
         );
-        exec_block(block, &mut vars);
+        exec_block(&block, &mut vars);
         assert_eq!(vars.get("x").unwrap(), &Variable::Integer(5));
     }
 
@@ -130,7 +130,7 @@ pub mod tests {
             .collect::<Vec<&str>>()
             .as_slice(),
         );
-        exec_block(block, &mut vars);
+        exec_block(&block, &mut vars);
         assert_eq!(vars.get("x").unwrap(), &Variable::Integer(5));
         assert_eq!(vars.get("c").unwrap(), &Variable::Integer(16));
     }
