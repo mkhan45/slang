@@ -46,7 +46,11 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
                 OperatorType::LessEqual => Variable::Bool(val2 <= val1),
                 OperatorType::Greater => Variable::Bool(val2 > val1),
                 OperatorType::Less => Variable::Bool(val2 < val1),
+                OperatorType::NotEqual => Variable::Bool(val2 != val1),
                 OperatorType::Equal => Variable::Bool(val2 == val1),
+                OperatorType::And => val2.and(&val1),
+                OperatorType::Or => val2.or(&val1),
+                OperatorType::Modulus => val2.modulus(&val1),
             };
 
             stack.push(SubExpression::Val(v));
@@ -163,6 +167,33 @@ impl Variable {
             panic!("Illegal cast to non type variable");
         }
     }
+
+    #[inline]
+    pub fn and(&self, rhs: &Variable) -> Variable {
+        if let (Variable::Bool(bool1), Variable::Bool(bool2)) = (self, rhs) {
+            Variable::Bool(*bool1 && *bool2)
+        } else {
+            panic!(format!("Illegal And use with non bool: {:?}, {:?}", self, rhs));
+        }
+    }
+
+    #[inline]
+    pub fn or(&self, rhs: &Variable) -> Variable {
+        if let (Variable::Bool(bool1), Variable::Bool(bool2)) = (self, rhs) {
+            Variable::Bool(*bool1 || *bool2)
+        } else {
+            panic!("Illegal cast to non type variable");
+        }
+    }
+
+    #[inline]
+    pub fn modulus(&self, rhs: &Variable) -> Variable {
+        if let (Variable::Integer(v1), Variable::Integer(v2)) = (self, rhs) {
+            Variable::Integer(v1 % v2)
+        } else {
+            panic!("Illegal cast to non type variable");
+        }
+    }
 }
 
 #[inline]
@@ -179,16 +210,20 @@ pub fn token_to_subexpr(token: Token) -> SubExpression {
 
 pub fn operator_precedence(ty: OperatorType) -> u8 {
     match ty {
+        OperatorType::And => 5,
+        OperatorType::Or => 5,
         OperatorType::Plus => 4,
         OperatorType::Minus => 4,
         OperatorType::Multiply => 3,
         OperatorType::Divide => 3,
         OperatorType::Exponentiate => 2,
         OperatorType::Equal => 1,
+        OperatorType::NotEqual => 1,
         OperatorType::LessEqual => 1,
         OperatorType::GreaterEqual => 1,
         OperatorType::Less => 1,
         OperatorType::Greater => 1,
         OperatorType::Cast => 0,
+        OperatorType::Modulus => 1,
     }
 }

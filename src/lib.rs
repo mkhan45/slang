@@ -31,6 +31,14 @@ macro_rules! default_vars {
             "Bool".to_owned(),
             Variable::Type(Rc::new("Bool".to_owned())),
         );
+        vars.insert(
+            "True".to_owned(),
+            Variable::Bool(true),
+        );
+        vars.insert(
+            "False".to_owned(),
+            Variable::Bool(false),
+        );
         vars
     }};
 }
@@ -78,6 +86,7 @@ impl Variable {
             (&Variable::Integer(_), &Variable::Integer(_)) => true,
             (&Variable::Float(_), &Variable::Float(_)) => true,
             (&Variable::Str(_), &Variable::Str(_)) => true,
+            (&Variable::Bool(_), &Variable::Bool(_)) => true,
             (&Variable::Custom(_), &Variable::Custom(_)) => match (self, rhs) {
                 (Variable::Custom(box1), Variable::Custom(box2)) => *box1.0 == *box2.0,
                 _ => false,
@@ -126,9 +135,13 @@ pub enum OperatorType {
     Exponentiate,
     GreaterEqual,
     LessEqual,
+    NotEqual,
     Greater,
     Less,
     Equal,
+    Modulus,
+    And,
+    Or,
 }
 
 impl PartialOrd for OperatorType {
@@ -287,6 +300,15 @@ impl<'a> Lexer<'a> {
             Some('/') => Token::Operator(OperatorType::Divide),
             Some('*') => Token::Operator(OperatorType::Multiply),
             Some('^') => Token::Operator(OperatorType::Exponentiate),
+            Some('%') => Token::Operator(OperatorType::Modulus),
+            Some('!') => {
+                if self.peek_char().unwrap() == &'=' {
+                    self.read_char();
+                    Token::Operator(OperatorType::NotEqual)
+                } else {
+                    panic!("invalid !")
+                }
+            }
             Some('>') => {
                 if self.peek_char().unwrap() == &'=' {
                     self.read_char();
@@ -326,6 +348,8 @@ impl<'a> Lexer<'a> {
                 } else if is_ident_char(ch) {
                     let ident = self.read_identifier(ch);
                     match ident.as_str() {
+                        "and" => Token::Operator(OperatorType::And),
+                        "or" => Token::Operator(OperatorType::Or),
                         "as" => Token::Operator(OperatorType::Cast),
                         "print" => Token::Ident(IdentType::Print),
                         "fn" => Token::Ident(IdentType::Function),
