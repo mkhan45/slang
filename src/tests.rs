@@ -87,7 +87,7 @@ pub mod tests {
         );
         exec_block(&block, &mut vars);
 
-        assert_eq!(vars.get("a").unwrap(), &Variable::Str("5".to_string()));
+        assert_eq!(vars.get("a").unwrap(), &Variable::Str(Rc::new("5".to_string())));
     }
 
     #[test]

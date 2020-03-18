@@ -5,6 +5,8 @@ use std::io::{self, BufRead};
 
 use std::collections::HashMap;
 
+use std::rc::Rc;
+
 mod parser;
 use parser::{Expression, SubExpression};
 
@@ -13,12 +15,22 @@ pub mod tests;
 #[macro_export]
 macro_rules! default_vars {
     () => {{
+        use std::rc::Rc;
         let mut vars: HashMap<String, Variable> = HashMap::new();
         vars.insert("PI".to_owned(), Variable::Float(std::f64::consts::PI));
-        vars.insert("String".to_owned(), Variable::Type("String".to_owned()));
-        vars.insert("Int".to_owned(), Variable::Type("Int".to_owned()));
-        vars.insert("Float".to_owned(), Variable::Type("Float".to_owned()));
-        vars.insert("Bool".to_owned(), Variable::Type("Bool".to_owned()));
+        vars.insert(
+            "String".to_owned(),
+            Variable::Type(Rc::new("String".to_owned())),
+        );
+        vars.insert("Int".to_owned(), Variable::Type(Rc::new("Int".to_owned())));
+        vars.insert(
+            "Float".to_owned(),
+            Variable::Type(Rc::new("Float".to_owned())),
+        );
+        vars.insert(
+            "Bool".to_owned(),
+            Variable::Type(Rc::new("Bool".to_owned())),
+        );
         vars
     }};
 }
@@ -35,15 +47,29 @@ pub enum BlockSection {
     InnerBlock(Vec<BlockSection>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum Variable {
     Integer(isize),
     Float(f64),
-    Str(String),
+    Str(Rc<String>),
     Bool(bool),
-    Function(SlangFn),
-    Type(String),
-    Custom(String, HashMap<String, Variable>),
+    Function(Rc<SlangFn>),
+    Type(Rc<String>),
+    Custom(Rc<(String, HashMap<String, Variable>)>),
+}
+
+impl Clone for Variable {
+    fn clone(&self) -> Self {
+        match self {
+            Variable::Integer(i) => Variable::Integer(*i),
+            Variable::Float(f) => Variable::Float(*f),
+            Variable::Str(boxed_str) => Variable::Str(boxed_str.clone()),
+            Variable::Bool(b) => Variable::Bool(*b),
+            Variable::Function(boxed_fn) => Variable::Function(boxed_fn.clone()),
+            Variable::Type(boxed_name) => Variable::Type(boxed_name.clone()),
+            Variable::Custom(boxed_type) => Variable::Custom(boxed_type.clone()),
+        }
+    }
 }
 
 impl Variable {
@@ -52,14 +78,10 @@ impl Variable {
             (&Variable::Integer(_), &Variable::Integer(_)) => true,
             (&Variable::Float(_), &Variable::Float(_)) => true,
             (&Variable::Str(_), &Variable::Str(_)) => true,
-            (&Variable::Custom(_, _), &Variable::Custom(_, _)) => {
-                let self_clone = self.clone();
-                let rhs_clone = rhs.clone();
-                match (self_clone, rhs_clone) {
-                    (Variable::Custom(t1, _), Variable::Custom(t2, _)) => t1 == t2,
-                    _ => false,
-                }
-            }
+            (&Variable::Custom(_), &Variable::Custom(_)) => match (self, rhs) {
+                (Variable::Custom(box1), Variable::Custom(box2)) => *box1.0 == *box2.0,
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -79,8 +101,8 @@ pub enum Token {
     Ident(IdentType),
     Integer(isize),
     Float(f64),
-    StringLiteral(String),
-    Name(String),
+    StringLiteral(Rc<String>),
+    Name(Rc<String>),
     Operator(OperatorType),
 }
 
@@ -145,7 +167,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn read_identifier(&mut self, first: char) -> String {
-        let mut ident = String::with_capacity(10);
+        let mut ident = String::with_capacity(6);
         ident.push(first);
 
         while self.peek_is_ident_char() {
@@ -202,17 +224,16 @@ impl<'a> Lexer<'a> {
 
                 Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) => {
                     match token {
-                        Token::Name(name) => {
-                            postfix_expr.push(SubExpression::Name(name.clone()))
-                        }
+                        Token::Name(name) => postfix_expr.push(SubExpression::Name(name.clone())),
                         Token::Integer(int) => {
                             postfix_expr.push(SubExpression::Val(Variable::Integer(*int)))
                         }
                         Token::Float(float) => {
                             postfix_expr.push(SubExpression::Val(Variable::Float(*float)))
                         }
-                        Token::StringLiteral(string) => postfix_expr
-                            .push(SubExpression::Val(Variable::Str(string.clone()))),
+                        Token::StringLiteral(string) => {
+                            postfix_expr.push(SubExpression::Val(Variable::Str(string.clone())))
+                        }
                         _ => panic!(),
                     }
                 }
@@ -290,7 +311,7 @@ impl<'a> Lexer<'a> {
                     Token::Assign
                 }
             }
-            Some('\"') => Token::StringLiteral(self.read_string_literal()),
+            Some('\"') => Token::StringLiteral(Rc::new(self.read_string_literal())),
             Some(ch) => {
                 if ch.is_numeric() {
                     let read_number = self.read_num(ch);
@@ -313,7 +334,7 @@ impl<'a> Lexer<'a> {
                         "else" => Token::Ident(IdentType::Else),
                         "return" => Token::Ident(IdentType::Return),
                         "while" => Token::While,
-                        _ => Token::Name(ident),
+                        _ => Token::Name(Rc::new(ident)),
                     }
                 } else {
                     Token::Illegal
@@ -498,20 +519,24 @@ pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) 
                                 if let (Token::Name(lhs), Token::Assign) =
                                     (token.clone(), next_token.clone())
                                 {
-                                    if !vars.contains_key(&lhs) {
-                                        panic!("Assigned to uninitialized variable {}", lhs);
-                                    }
                                     let rhs_expr = Lexer::read_expr(token_iter);
                                     let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
 
-                                    let prev_val = vars.get(&lhs).unwrap();
-                                    if prev_val.same_type(&rhs_eval) {
-                                        vars.insert(lhs, rhs_eval);
-                                    } else {
-                                        panic!(
-                                            "Variable types do not match: {:?}, {:?}",
-                                            lhs, rhs_eval
-                                        );
+                                    match vars.get_mut(lhs.as_ref()) {
+                                        Some(prev_val) => {
+                                            if prev_val.same_type(&rhs_eval) {
+                                                *prev_val = rhs_eval;
+                                            } else {
+                                                panic!(
+                                                    "Variable types do not match: {:?}, {:?}",
+                                                    lhs, rhs_eval
+                                                );
+                                            }
+                                        }
+                                        None => panic!(format!(
+                                            "assigned to uninitialized variable {}",
+                                            &lhs
+                                        )),
                                     }
                                     break;
                                 }

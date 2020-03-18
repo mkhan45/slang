@@ -1,12 +1,13 @@
 use crate::{OperatorType, Token, Variable};
 
 use std::collections::HashMap;
+use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialOrd, PartialEq)]
 pub enum SubExpression {
     Val(Variable),
     Operator(OperatorType),
-    Name(String),
+    Name(Rc<String>),
 }
 
 pub type Expression = Vec<SubExpression>;
@@ -19,7 +20,7 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
     expr.iter().for_each(|subexpr| match subexpr {
         SubExpression::Val(v) => stack.push(SubExpression::Val(v.clone())),
         SubExpression::Name(string) => stack.push(SubExpression::Val(
-            vars.get(string)
+            vars.get(string.as_ref())
                 .unwrap_or_else(|| panic!("Uninitialized variable: {}", string))
                 .clone(),
         )),
@@ -82,7 +83,9 @@ impl ops::Add for Variable {
             (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 + v2 as f64),
             (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(v1 as f64 + v2),
             (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1 + v2),
-            (Variable::Str(v1), Variable::Str(v2)) => Variable::Str(format!("{}{}", v1, v2)),
+            (Variable::Str(v1), Variable::Str(v2)) => {
+                Variable::Str(Rc::new(format!("{}{}", v1, v2)))
+            }
             _ => panic!("illegal addition"),
         }
     }
@@ -149,10 +152,11 @@ impl Variable {
         }
     }
 
+    #[inline]
     pub fn cast(&self, rhs: &Variable) -> Variable {
         if let Variable::Type(typename) = rhs {
             match (self, typename.as_str()) {
-                (Variable::Integer(v1), "String") => Variable::Str(v1.to_string()),
+                (Variable::Integer(v1), "String") => Variable::Str(Rc::new(v1.to_string())),
                 _ => todo!(),
             }
         } else {

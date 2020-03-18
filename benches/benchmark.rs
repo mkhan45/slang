@@ -45,14 +45,22 @@ fn while_loop_bench() {
     run_file!(filename, vars);
 }
 
+fn multi_table_bench() {
+    let filename = Some("benches/multi_table.slang");
+    let mut vars: HashMap<String, Variable> = default_vars!();
+
+    run_file!(filename, vars);
+}
+
 pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("fib 25", |b| b.iter(|| fib_bench()));
     c.bench_function("while 100000", |b| b.iter(|| while_loop_bench()));
+    c.bench_function("multi table 10", |b| b.iter(|| multi_table_bench()));
 }
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().sample_size(25).measurement_time(std::time::Duration::from_secs(10));
+    config = Criterion::default().sample_size(30).measurement_time(std::time::Duration::from_secs(15));
     targets = criterion_benchmark
 }
 criterion_main!(benches);
