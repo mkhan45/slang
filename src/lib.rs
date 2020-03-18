@@ -213,7 +213,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_expr(token_iter: impl Iterator<Item = &'a Token>) -> parser::Expression {
+    fn read_expr(token_iter: &mut impl Iterator<Item = &'a Token>) -> parser::Expression {
         let mut stack: Vec<Token> = Vec::with_capacity(8);
         stack.push(Token::LParen);
         let mut postfix_expr = Expression::new();
@@ -462,7 +462,7 @@ pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) 
                 while let Some(token) = token_iter.next() {
                     match token {
                         Token::While => {
-                            let conditional_expr = Lexer::read_expr(token_iter);
+                            let conditional_expr = Lexer::read_expr(&mut token_iter);
                             let inner_block = block_iter.next();
 
                             let mut inner_vars = vars.clone();
@@ -484,11 +484,36 @@ pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) 
                             break;
                         }
 
+                        Token::Ident(IdentType::If) => {
+                            let conditional_expr = Lexer::read_expr(&mut token_iter);
+                            let inner_block = block_iter.next();
+
+                            let mut inner_vars = vars.clone();
+
+                            if let BlockSection::InnerBlock(inner_block_vec) = inner_block.unwrap()
+                            {
+                                if parser::eval_expr(&conditional_expr, &inner_vars)
+                                    == Variable::Bool(true)
+                                    {
+                                        exec_block(&inner_block_vec, &mut inner_vars);
+                                    }
+                            } 
+
+                            for (k, v) in inner_vars {
+                                if let Some(old_v) = vars.get_mut(&k) {
+                                    *old_v = v;
+                                }
+                            }
+
+
+                            break;
+                        }
+
                         Token::Ident(ty) => match ty {
                             IdentType::Let => match token_iter.next().unwrap() {
                                 Token::Name(lhs) => {
                                     if let Token::Assign = token_iter.next().unwrap() {
-                                        let rhs_expr = Lexer::read_expr(token_iter);
+                                        let rhs_expr = Lexer::read_expr(&mut token_iter);
                                         let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
                                         vars.insert(lhs.to_string(), rhs_eval);
                                         break;
@@ -499,7 +524,7 @@ pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) 
                                 _ => panic!("invalid assign"),
                             },
                             IdentType::Print => {
-                                let expr = Lexer::read_expr(token_iter);
+                                let expr = Lexer::read_expr(&mut token_iter);
                                 println!("{:?}", parser::eval_expr(&expr, &vars));
                                 break;
                             }
@@ -508,41 +533,41 @@ pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) 
 
                         // Token::LParen => stack.push(token),
                         Token::Integer(_)
-                        | Token::Float(_)
-                        | Token::Name(_)
-                        | Token::StringLiteral(_)
-                        | Token::Operator(_)
-                        | Token::RParen
-                        | Token::EOF
-                        | Token::LParen => {
-                            if let Some(next_token) = token_iter.next() {
-                                if let (Token::Name(lhs), Token::Assign) =
-                                    (token.clone(), next_token.clone())
-                                {
-                                    let rhs_expr = Lexer::read_expr(token_iter);
-                                    let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+                            | Token::Float(_)
+                            | Token::Name(_)
+                            | Token::StringLiteral(_)
+                            | Token::Operator(_)
+                            | Token::RParen
+                            | Token::EOF
+                            | Token::LParen => {
+                                if let Some(next_token) = token_iter.next() {
+                                    if let (Token::Name(lhs), Token::Assign) =
+                                        (token.clone(), next_token.clone())
+                                    {
+                                        let rhs_expr = Lexer::read_expr(&mut token_iter);
+                                        let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
 
-                                    match vars.get_mut(lhs.as_ref()) {
-                                        Some(prev_val) => {
-                                            if prev_val.same_type(&rhs_eval) {
-                                                *prev_val = rhs_eval;
-                                            } else {
-                                                panic!(
-                                                    "Variable types do not match: {:?}, {:?}",
-                                                    lhs, rhs_eval
-                                                );
+                                        match vars.get_mut(lhs.as_ref()) {
+                                            Some(prev_val) => {
+                                                if prev_val.same_type(&rhs_eval) {
+                                                    *prev_val = rhs_eval;
+                                                } else {
+                                                    panic!(
+                                                        "Variable types do not match: {:?}, {:?}",
+                                                        lhs, rhs_eval
+                                                    );
+                                                }
                                             }
+                                            None => panic!(format!(
+                                                    "assigned to uninitialized variable {}",
+                                                    &lhs
+                                            )),
                                         }
-                                        None => panic!(format!(
-                                            "assigned to uninitialized variable {}",
-                                            &lhs
-                                        )),
+                                        break;
                                     }
-                                    break;
                                 }
+                                break;
                             }
-                            break;
-                        }
 
                         _ => todo!(),
                     }

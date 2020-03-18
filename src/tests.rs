@@ -145,6 +145,26 @@ pub mod tests {
     }
 
     #[test]
+    fn if_statement() {
+        let filename = Some("tests/if_test.slang");
+        let mut vars: HashMap<String, Variable> = default_vars!();
+        run_file!(filename, vars);
+
+        assert_eq!(vars.get("x").unwrap(), &Variable::Integer(1));
+        assert_eq!(vars.get("y").unwrap(), &Variable::Integer(0));
+    }
+
+    #[test]
+    fn if_else_statement() {
+        let filename = Some("tests/if_else_test.slang");
+        let mut vars: HashMap<String, Variable> = default_vars!();
+        run_file!(filename, vars);
+
+        assert_eq!(vars.get("x").unwrap(), &Variable::Integer(1));
+        assert_eq!(vars.get("y").unwrap(), &Variable::Integer(2));
+    }
+
+    #[test]
     fn multi_table() {
         let filename = Some("tests/multi_table.slang");
         let mut vars: HashMap<String, Variable> = default_vars!();
