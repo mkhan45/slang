@@ -1,17 +1,21 @@
-let n = 0
-
-while n < 50 {
+let n = 3
+while n < 300 {
    let n_sqrt = n^0.5
 
-   let x = 1
-   let not_break = True
+      let i = 2
+      let not_break = True
+      let is_prime = True
+      while not_break {
+         if n % i == 0 {
+            not_break = False
+            is_prime = False
+         }
 
-   while not_break {
-      print(x)
-      if n % x == 0 {
-         not_break = False
+         if i >= n_sqrt {
+            not_break = False
+         }
+         i = i + 1
       }
 
-      x = x + 1
-   }
+   n = n + 1
 }

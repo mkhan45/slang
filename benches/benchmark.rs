@@ -39,13 +39,6 @@ fn fib_bench() {
     run_file!(filename, vars);
 }
 
-fn while_loop_bench() {
-    let filename = Some("benches/while_loop_bench.slang");
-    let mut vars: HashMap<String, Variable> = default_vars!();
-
-    run_file!(filename, vars);
-}
-
 fn multi_table_bench() {
     let filename = Some("benches/multi_table.slang");
     let mut vars: HashMap<String, Variable> = default_vars!();
@@ -53,10 +46,25 @@ fn multi_table_bench() {
     run_file!(filename, vars);
 }
 
+fn is_prime_bench() {
+    let filename = Some("benches/isprime.slang");
+    let mut vars: HashMap<String, Variable> = default_vars!();
+
+    run_file!(filename, vars);
+}
+
+fn while_loop_bench() {
+    let filename = Some("benches/while_loop_bench.slang");
+    let mut vars: HashMap<String, Variable> = default_vars!();
+
+    run_file!(filename, vars);
+}
+
 pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("fib 25", |b| b.iter(|| fib_bench()));
+    c.bench_function("multi table 10 4 times", |b| b.iter(|| multi_table_bench()));
+    c.bench_function("isprime 300", |b| b.iter(|| is_prime_bench()));
     c.bench_function("while 100000", |b| b.iter(|| while_loop_bench()));
-    c.bench_function("multi table 10", |b| b.iter(|| multi_table_bench()));
 }
 
 criterion_group! {

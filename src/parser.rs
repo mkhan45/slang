@@ -161,6 +161,7 @@ impl Variable {
         if let Variable::Type(typename) = rhs {
             match (self, typename.as_str()) {
                 (Variable::Integer(v1), "String") => Variable::Str(Rc::new(v1.to_string())),
+                (Variable::Bool(v1), "String") => Variable::Str(Rc::new(v1.to_string())),
                 _ => todo!(),
             }
         } else {
