@@ -1,4 +1,4 @@
-use crate::{OperatorType, Token, Variable, BlockSection, exec_block, InterpreterContext};
+use crate::{exec_block, BlockSection, InterpreterContext, OperatorType, Token, Variable};
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -6,7 +6,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq)]
 pub enum SubExpression {
     Val(Variable),
-    Function(Rc<(HashMap<String, Vec<SubExpression>>, Vec<BlockSection>)>),
+    Function(Rc<(HashMap<String, Expression>, Vec<BlockSection>)>),
     Operator(OperatorType),
     Name(Rc<String>),
 }
@@ -28,9 +28,10 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
         SubExpression::Function(slang_fn_rc) => {
             let (unprocessed_fn_vars, block) = slang_fn_rc.as_ref();
 
-            let mut fn_vars: HashMap<String, Variable> = unprocessed_fn_vars.iter().map(|(k, v)|{
-                (k.clone(), eval_expr(v, vars))
-            }).collect();
+            let mut fn_vars: HashMap<String, Variable> = unprocessed_fn_vars
+                .iter()
+                .map(|(k, v)| (k.clone(), eval_expr(v, vars)))
+                .collect();
 
             if let Some(res) = exec_block(block, &mut fn_vars, &mut InterpreterContext::default()) {
                 stack.push(SubExpression::Val(res));
@@ -188,8 +189,8 @@ impl Variable {
             Variable::Bool(*bool1 && *bool2)
         } else {
             panic!(format!(
-                    "Illegal And use with non bool: {:?}, {:?}",
-                    self, rhs
+                "Illegal And use with non bool: {:?}, {:?}",
+                self, rhs
             ));
         }
     }

@@ -1,23 +1,25 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use slang::*;
+use slang::{parser, *};
 use std::collections::HashMap;
+use std::io;
 
 macro_rules! run_file {
     ($filename: expr, $vars: expr) => {
         use std::io::{BufRead, BufReader, Write};
+        let mut interpreter_context = InterpreterContext::default();
+
         let mut reader_lines = $filename.map(|name| {
             BufReader::new(std::fs::File::open(name).expect("invalid filename")).lines()
         });
-        let mut interpreter_context = InterpreterContext::default();
 
         loop {
-            std::io::stdout().flush().unwrap();
+            io::stdout().flush().unwrap();
 
-            let block_res = Lexer::read_next_block(&mut reader_lines);
+            let block_res = parser::read_next_block(&mut reader_lines);
             match block_res {
                 Some(block) => {
-                    let block = process_block(
+                    let block = parser::process_block(
                         block
                             .iter()
                             .map(|string| string.as_str())
@@ -71,7 +73,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("fib iter 25", |b| b.iter(|| fib_fast_bench()));
     c.bench_function("multi table 10 4 times", |b| b.iter(|| multi_table_bench()));
     c.bench_function("isprime 300", |b| b.iter(|| is_prime_bench()));
-    c.bench_function("fib recurse 10", |b| b.iter(|| fib_recurse_bench()));
+    c.bench_function("fib recurse 20", |b| b.iter(|| fib_recurse_bench()));
     c.bench_function("while 100000", |b| b.iter(|| while_loop_bench()));
 }
 

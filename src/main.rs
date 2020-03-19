@@ -18,10 +18,10 @@ fn main() {
         }
         io::stdout().flush().unwrap();
 
-        let block_res = Lexer::read_next_block(&mut reader_lines);
+        let block_res = parser::read_next_block(&mut reader_lines);
         match block_res {
             Some(block) => {
-                let block = process_block(
+                let block = parser::process_block(
                     block
                         .iter()
                         .map(|string| string.as_str())

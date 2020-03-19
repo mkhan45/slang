@@ -2,8 +2,7 @@
 #[rustfmt::skip]
 pub mod tests {
     use std::collections::HashMap;
-    use crate::{*, parser};
-    use std::io;
+    use crate::{*, parser::*, };
 
     macro_rules! run_file {
         ($filename: expr, $vars: expr) => {
@@ -15,10 +14,10 @@ pub mod tests {
             loop {
                 io::stdout().flush().unwrap();
 
-                let block_res = parser::read_next_block(&mut reader_lines);
+                let block_res = Lexer::read_next_block(&mut reader_lines);
                 match block_res {
                     Some(block) => {
-                        let block = parser::process_block(
+                        let block = process_block(
                             block
                             .iter()
                             .map(|string| string.as_str())
@@ -40,7 +39,7 @@ pub mod tests {
         let block = vec![
             "let x = 5".to_string()
         ];
-        let block = parser::process_block(
+        let block = process_block(
             block.iter()
             .map(|string| string.as_str())
             .collect::<Vec<&str>>()
@@ -62,7 +61,7 @@ pub mod tests {
             "let d = 5 * (10 + 3)".to_string(),
             "let e = 5 + 10 * 3".to_string(),
         ];
-        let block = parser::process_block(
+        let block = process_block(
             block.iter()
             .map(|string| string.as_str())
             .collect::<Vec<&str>>()
@@ -85,7 +84,7 @@ pub mod tests {
         let block = vec![
             "let a = 5 as String".to_string(),
         ];
-        let block = parser::process_block(
+        let block = process_block(
             block.iter()
             .map(|string| string.as_str())
             .collect::<Vec<&str>>()
@@ -107,7 +106,7 @@ pub mod tests {
             "x = x + 1".to_string(),
             "}".to_string(),
         ];
-        let block = parser::process_block(
+        let block = process_block(
             block.iter()
             .map(|string| string.as_str())
             .collect::<Vec<&str>>()
@@ -137,7 +136,7 @@ pub mod tests {
                 "x = x + 1".to_string(),
             "}".to_string(),
         ];
-        let block = parser::process_block(
+        let block = process_block(
             block.iter()
             .map(|string| string.as_str())
             .collect::<Vec<&str>>()

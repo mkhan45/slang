@@ -9,4 +9,4 @@ fn fib(n: Int) -> Int {
 }
 
 
-let x = fib(10)
+fib(40)
