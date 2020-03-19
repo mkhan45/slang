@@ -9,6 +9,7 @@ macro_rules! run_file {
         let mut reader_lines = $filename.map(|name| {
             BufReader::new(std::fs::File::open(name).expect("invalid filename")).lines()
         });
+        let mut interpreter_context = InterpreterContext::default();
 
         loop {
             std::io::stdout().flush().unwrap();
@@ -23,7 +24,7 @@ macro_rules! run_file {
                             .collect::<Vec<&str>>()
                             .as_slice(),
                     );
-                    exec_block(&block, &mut $vars);
+                    exec_block(&block, &mut $vars, &mut interpreter_context);
                 }
                 None => break,
             }

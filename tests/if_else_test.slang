@@ -3,8 +3,9 @@ let x = 0
 if 1 == 1 {
    x = 1
 } else {
-   x = 0
+   x = 2
 }
+
 
 let y = 0
 

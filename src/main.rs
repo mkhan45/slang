@@ -10,6 +10,8 @@ fn main() {
         .map(|name| BufReader::new(std::fs::File::open(name).expect("invalid filename")).lines());
     let mut vars: HashMap<String, Variable> = default_vars!();
 
+    let mut interpreter_context = InterpreterContext::default();
+
     loop {
         if filename.is_none() {
             print!("> ");
@@ -26,7 +28,7 @@ fn main() {
                         .collect::<Vec<&str>>()
                         .as_slice(),
                 );
-                exec_block(&block, &mut vars);
+                exec_block(&block, &mut vars, &mut interpreter_context);
             }
             None => break,
         }

@@ -31,16 +31,15 @@ macro_rules! default_vars {
             "Bool".to_owned(),
             Variable::Type(Rc::new("Bool".to_owned())),
         );
-        vars.insert(
-            "True".to_owned(),
-            Variable::Bool(true),
-        );
-        vars.insert(
-            "False".to_owned(),
-            Variable::Bool(false),
-        );
+        vars.insert("True".to_owned(), Variable::Bool(true));
+        vars.insert("False".to_owned(), Variable::Bool(false));
         vars
     }};
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct InterpreterContext {
+    if_else_status: Vec<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -398,10 +397,14 @@ impl<'a> Lexer<'a> {
             }
             if line.contains('}') {
                 brace_cnt -= 1;
+                let split = line.split('}').collect::<Vec<&str>>();
+                ret_block.push(format!("{}{}", split[0], '}'));
+                ret_block.push(split[1].to_string());
                 if brace_cnt == 0 {
                     ret_block.push(line);
                     break;
                 }
+                continue;
             }
 
             ret_block.push(line);
@@ -421,9 +424,8 @@ impl<'a> Lexer<'a> {
 pub fn process_block(in_block: &[&str]) -> Vec<BlockSection> {
     let mut blocks: Vec<BlockSection> = Vec::new();
 
-    let mut line_iterator = in_block.iter();
-    let mut line_num = 0;
-    while let Some(block_line) = line_iterator.next() {
+    let mut line_iterator = in_block.iter().enumerate();
+    while let Some((line_num, block_line)) = line_iterator.next() {
         let mut lexer = Lexer::new(&block_line);
         let mut line: Vec<Token> = Vec::new();
 
@@ -444,41 +446,43 @@ pub fn process_block(in_block: &[&str]) -> Vec<BlockSection> {
                 blocks.push(BlockSection::Line(line.clone()));
 
                 let mut brace_cnt = 1;
-                let mut num_lines = 0;
+                let mut final_line: Option<usize> = None;
                 let mut next_line = line_iterator.next();
-                while let Some(line) = next_line {
-                    if line.contains('{') {
-                        brace_cnt += 1;
-                    }
+                while let Some((inner_line_num, line)) = next_line {
                     if line.contains('}') {
                         brace_cnt -= 1;
                     }
+                    if line.contains('{') {
+                        brace_cnt += 1;
+                    }
                     if brace_cnt == 0 {
+                        final_line = Some(inner_line_num);
                         break;
                     }
 
-                    num_lines += 1;
                     next_line = line_iterator.next();
                 }
-                let block = process_block(&in_block[line_num + 1..line_num + 1 + num_lines]);
+
+                // dbg!(&in_block[line_num + 1 .. final_line.unwrap()]);
+                let block = process_block(&in_block[line_num + 1..final_line.unwrap()]);
 
                 blocks.push(BlockSection::InnerBlock(block));
 
                 line = Vec::new();
-            } else if token == Token::RBrace {
-                break;
             }
         }
-
-        line_num += 1;
     }
     // dbg!(blocks.clone());
 
     blocks
 }
 
-pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) {
-    let mut block_iter = block.iter();
+pub fn exec_block(
+    block: &[BlockSection],
+    vars: &mut HashMap<String, Variable>,
+    context: &mut InterpreterContext,
+) {
+    let mut block_iter = block.iter().peekable();
     while let Some(block_section) = block_iter.next() {
         match block_section {
             BlockSection::Line(tokens) => {
@@ -496,7 +500,7 @@ pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) 
                                 while parser::eval_expr(&conditional_expr, &inner_vars)
                                     == Variable::Bool(true)
                                 {
-                                    exec_block(&inner_block_vec, &mut inner_vars);
+                                    exec_block(&inner_block_vec, &mut inner_vars, context);
                                 }
                             }
 
@@ -510,27 +514,57 @@ pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) 
 
                         Token::Ident(IdentType::If) => {
                             let conditional_expr = Lexer::read_expr(&mut token_iter);
-                            let inner_block = block_iter.next();
 
+                            let inner_block = block_iter.peek();
                             let mut inner_vars = vars.clone();
 
                             if let BlockSection::InnerBlock(inner_block_vec) = inner_block.unwrap()
                             {
+                                block_iter.next();
                                 if parser::eval_expr(&conditional_expr, &inner_vars)
                                     == Variable::Bool(true)
-                                    {
-                                        exec_block(&inner_block_vec, &mut inner_vars);
-                                    }
-                            } 
-
+                                {
+                                    exec_block(&inner_block_vec, &mut inner_vars, context);
+                                    context.if_else_status.push(true);
+                                } else {
+                                    context.if_else_status.push(false);
+                                }
+                            }
                             for (k, v) in inner_vars {
                                 if let Some(old_v) = vars.get_mut(&k) {
                                     *old_v = v;
                                 }
                             }
 
-
                             break;
+                        }
+
+                        Token::Ident(IdentType::Else) => {
+                            dbg!(context.if_else_status.clone());
+                            let prev_status =
+                                context.if_else_status.pop().expect("error: invalid else");
+
+                            if !prev_status {
+                                let inner_block = block_iter.peek();
+                                let mut inner_vars = vars.clone();
+
+                                if let BlockSection::InnerBlock(inner_block_vec) =
+                                    inner_block.unwrap()
+                                {
+                                    context.if_else_status.push(true);
+                                    block_iter.next();
+                                    exec_block(&inner_block_vec, &mut inner_vars, context);
+                                }
+
+                                for (k, v) in inner_vars {
+                                    if let Some(old_v) = vars.get_mut(&k) {
+                                        *old_v = v;
+                                    }
+                                }
+
+                                break;
+                            }
+                            block_iter.next();
                         }
 
                         Token::Ident(ty) => match ty {
@@ -557,48 +591,54 @@ pub fn exec_block(block: &[BlockSection], vars: &mut HashMap<String, Variable>) 
 
                         // Token::LParen => stack.push(token),
                         Token::Integer(_)
-                            | Token::Float(_)
-                            | Token::Name(_)
-                            | Token::StringLiteral(_)
-                            | Token::Operator(_)
-                            | Token::RParen
-                            | Token::EOF
-                            | Token::LParen => {
-                                if let Some(next_token) = token_iter.next() {
-                                    if let (Token::Name(lhs), Token::Assign) =
-                                        (token.clone(), next_token.clone())
-                                    {
-                                        let rhs_expr = Lexer::read_expr(&mut token_iter);
-                                        let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+                        | Token::Float(_)
+                        | Token::Name(_)
+                        | Token::StringLiteral(_)
+                        | Token::Operator(_)
+                        | Token::RParen
+                        | Token::EOF
+                        | Token::LParen => {
+                            if let Some(next_token) = token_iter.next() {
+                                if let (Token::Name(lhs), Token::Assign) =
+                                    (token.clone(), next_token.clone())
+                                {
+                                    let rhs_expr = Lexer::read_expr(&mut token_iter);
+                                    let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
 
-                                        match vars.get_mut(lhs.as_ref()) {
-                                            Some(prev_val) => {
-                                                if prev_val.same_type(&rhs_eval) {
-                                                    *prev_val = rhs_eval;
-                                                } else {
-                                                    panic!(
-                                                        "Variable types do not match: {:?}, {:?}",
-                                                        lhs, rhs_eval
-                                                    );
-                                                }
+                                    match vars.get_mut(lhs.as_ref()) {
+                                        Some(prev_val) => {
+                                            if prev_val.same_type(&rhs_eval) {
+                                                *prev_val = rhs_eval;
+                                            } else {
+                                                panic!(
+                                                    "Variable types do not match: {:?}, {:?}",
+                                                    lhs, rhs_eval
+                                                );
                                             }
-                                            None => panic!(format!(
-                                                    "assigned to uninitialized variable {}",
-                                                    &lhs
-                                            )),
                                         }
-                                        break;
+                                        None => panic!(format!(
+                                            "assigned to uninitialized variable {}",
+                                            &lhs
+                                        )),
                                     }
+                                    break;
                                 }
-                                break;
                             }
+                            break;
+                        }
 
                         _ => todo!(),
                     }
                 }
+
+                if let Some(token) = tokens.get(0) {
+                    if token != &Token::Ident(IdentType::If) {
+                        context.if_else_status.pop();
+                    }
+                }
             }
             BlockSection::InnerBlock(blocks) => {
-                exec_block(blocks, vars);
+                exec_block(blocks, vars, context);
             }
         }
     }

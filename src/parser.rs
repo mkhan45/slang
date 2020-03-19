@@ -173,7 +173,10 @@ impl Variable {
         if let (Variable::Bool(bool1), Variable::Bool(bool2)) = (self, rhs) {
             Variable::Bool(*bool1 && *bool2)
         } else {
-            panic!(format!("Illegal And use with non bool: {:?}, {:?}", self, rhs));
+            panic!(format!(
+                "Illegal And use with non bool: {:?}, {:?}",
+                self, rhs
+            ));
         }
     }
 
