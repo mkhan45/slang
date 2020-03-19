@@ -32,7 +32,7 @@ macro_rules! run_file {
     };
 }
 
-fn fib_bench() {
+fn fib_fast_bench() {
     let filename = Some("benches/fib_fast.slang");
     let mut vars: HashMap<String, Variable> = default_vars!();
 
@@ -53,6 +53,13 @@ fn is_prime_bench() {
     run_file!(filename, vars);
 }
 
+fn fib_recurse_bench() {
+    let filename = Some("benches/fib_recurse.slang");
+    let mut vars: HashMap<String, Variable> = default_vars!();
+
+    run_file!(filename, vars);
+}
+
 fn while_loop_bench() {
     let filename = Some("benches/while_loop_bench.slang");
     let mut vars: HashMap<String, Variable> = default_vars!();
@@ -61,9 +68,10 @@ fn while_loop_bench() {
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("fib 25", |b| b.iter(|| fib_bench()));
+    c.bench_function("fib iter 25", |b| b.iter(|| fib_fast_bench()));
     c.bench_function("multi table 10 4 times", |b| b.iter(|| multi_table_bench()));
     c.bench_function("isprime 300", |b| b.iter(|| is_prime_bench()));
+    c.bench_function("fib recurse 10", |b| b.iter(|| fib_recurse_bench()));
     c.bench_function("while 100000", |b| b.iter(|| while_loop_bench()));
 }
 

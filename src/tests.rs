@@ -178,6 +178,15 @@ pub mod tests {
     }
 
     #[test]
+    fn basic_fn() {
+        let filename = Some("tests/basic_function.slang");
+        let mut vars: HashMap<String, Variable> = default_vars!();
+        run_file!(filename, vars);
+
+        assert_eq!(vars.get("x").unwrap(), &Variable::Integer(13));
+    }
+
+    #[test]
     fn multi_table() {
         let filename = Some("tests/multi_table.slang");
         let mut vars: HashMap<String, Variable> = default_vars!();
@@ -186,26 +195,35 @@ pub mod tests {
         assert_eq!(vars.get("x").unwrap(), &Variable::Integer(10));
     }
 
+    fn fib(n: isize) -> isize{
+        let mut a = 1isize;
+        let mut b = 1isize;
+
+        (0..n).for_each(|_|{
+            let c = b;
+            b = a + b;
+            a = c;
+        });
+
+        a
+    }
+
     #[test]
     pub fn fib_test() {
-        fn fib(n: isize) -> isize{
-            let mut a = 1isize;
-            let mut b = 1isize;
-
-            (0..n).for_each(|_|{
-                let c = b;
-                b = a + b;
-                a = c;
-            });
-
-            a
-        }
-
         let filename = Some("tests/fib_fast.slang");
         let mut vars: HashMap<String, Variable> = default_vars!();
 
         run_file!(filename, vars);
 
         assert_eq!(vars.get("a").unwrap(), &Variable::Integer(fib(24)));
+    }
+
+    #[test]
+    fn fib_recurse() {
+        let filename = Some("tests/fib_recurse.slang");
+        let mut vars: HashMap<String, Variable> = default_vars!();
+        run_file!(filename, vars);
+
+        assert_eq!(vars.get("x").unwrap(), &Variable::Integer(fib(7)));
     }
 }

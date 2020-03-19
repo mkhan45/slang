@@ -40,43 +40,34 @@ macro_rules! default_vars {
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct InterpreterContext {
     if_else_status: Vec<bool>,
+    ret_val: Option<Variable>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub struct SlangFn {
-    args: Vec<String>,
+    args: Vec<(Rc<String>, VarType)>,
     block: Vec<BlockSection>,
+    ret_type: Option<VarType>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum BlockSection {
     Line(Vec<Token>),
     InnerBlock(Vec<BlockSection>),
 }
 
-#[derive(Debug, PartialEq)]
+type VarType = Rc<String>;
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum Variable {
+    Null,
     Integer(isize),
     Float(f64),
     Str(Rc<String>),
     Bool(bool),
     Function(Rc<SlangFn>),
-    Type(Rc<String>),
+    Type(VarType),
     Custom(Rc<(String, HashMap<String, Variable>)>),
-}
-
-impl Clone for Variable {
-    fn clone(&self) -> Self {
-        match self {
-            Variable::Integer(i) => Variable::Integer(*i),
-            Variable::Float(f) => Variable::Float(*f),
-            Variable::Str(boxed_str) => Variable::Str(boxed_str.clone()),
-            Variable::Bool(b) => Variable::Bool(*b),
-            Variable::Function(boxed_fn) => Variable::Function(boxed_fn.clone()),
-            Variable::Type(boxed_name) => Variable::Type(boxed_name.clone()),
-            Variable::Custom(boxed_type) => Variable::Custom(boxed_type.clone()),
-        }
-    }
 }
 
 impl Variable {
@@ -95,8 +86,10 @@ impl Variable {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum Token {
+    RetArrow,
+    Colon,
     Semicolon,
     While,
     LBrace,
@@ -114,7 +107,7 @@ pub enum Token {
     Operator(OperatorType),
 }
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, PartialOrd)]
 pub enum IdentType {
     Print,
     Function,
@@ -225,18 +218,40 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_expr(token_iter: &mut impl Iterator<Item = &'a Token>) -> parser::Expression {
+    fn read_expr(token_iter: &mut impl Iterator<Item = &'a Token>, vars: &HashMap<String, Variable>) -> parser::Expression {
         let mut stack: Vec<Token> = Vec::with_capacity(8);
         stack.push(Token::LParen);
         let mut postfix_expr = Expression::new();
 
-        for token in token_iter {
+        while let Some(token) = token_iter.next() {
             match token {
                 Token::LParen => stack.push(token.clone()),
 
                 Token::Integer(_) | Token::Float(_) | Token::Name(_) | Token::StringLiteral(_) => {
                     match token {
-                        Token::Name(name) => postfix_expr.push(SubExpression::Name(name.clone())),
+                        Token::Name(name) => {
+                            if let Some(Variable::Function(slang_fn_rc)) = vars.get(name.as_ref()) {
+                                let args_name_iter = slang_fn_rc.as_ref().args.iter().map(|(k, _)| k);
+                                let mut args_map: HashMap<String, Vec<SubExpression>> = HashMap::with_capacity(args_name_iter.len());
+
+                                if let Some(Token::LParen) = token_iter.next() {
+                                    for var_name in args_name_iter {
+                                        args_map.insert(var_name.to_string(), Lexer::read_expr(token_iter, vars));
+                                    }
+                                }
+
+
+                                let block = &slang_fn_rc.as_ref().block;
+                                args_map.insert(name.to_string(), vec![SubExpression::Val(Variable::Function(slang_fn_rc.clone()))]);
+
+                                postfix_expr.push(SubExpression::Function(Rc::new(
+                                            (args_map,
+                                             block.to_vec())
+                                )));
+                            } else {
+                                postfix_expr.push(SubExpression::Name(name.clone()));
+                            }
+                        }
                         Token::Integer(int) => {
                             postfix_expr.push(SubExpression::Val(Variable::Integer(*int)))
                         }
@@ -252,23 +267,27 @@ impl<'a> Lexer<'a> {
 
                 Token::Operator(token_ty) => {
                     use parser::operator_precedence;
-                    let mut last_val = stack.pop().unwrap();
-                    while let Token::Operator(stack_ty) = last_val {
+                    let mut last_val = stack.pop();
+                    while let Some(Token::Operator(stack_ty)) = last_val {
                         if operator_precedence(stack_ty) > operator_precedence(*token_ty) {
                             break;
                         }
                         postfix_expr.push(SubExpression::Operator(stack_ty));
-                        last_val = stack.pop().unwrap();
+                        last_val = stack.pop();
                     }
-                    stack.push(last_val);
+                    if let Some(val) = last_val {
+                        stack.push(val);
+                    }
                     stack.push(token.clone());
                 }
 
                 Token::RParen | Token::EOF | Token::LBrace | Token::Semicolon => {
-                    let mut last_val = stack.pop().unwrap();
-                    while last_val != Token::LParen {
-                        postfix_expr.push(parser::token_to_subexpr(last_val));
-                        last_val = stack.pop().unwrap();
+                    let mut last_val = stack.pop();
+                    while !matches!(last_val, Some(Token::LParen) | None) {
+                        if let Some(token) = last_val {
+                            postfix_expr.push(parser::token_to_subexpr(token));
+                            last_val = stack.pop();
+                        }
                     }
                     if token != &Token::RParen {
                         break;
@@ -289,13 +308,21 @@ impl<'a> Lexer<'a> {
         self.skip_whitespace();
 
         match self.read_char() {
-            Some(';') => Token::LBrace,
+            Some(';') => Token::Semicolon,
+            Some(':') => Token::Colon,
             Some('{') => Token::LBrace,
             Some('}') => Token::RBrace,
             Some('(') => Token::LParen,
             Some(')') => Token::RParen,
             Some('+') => Token::Operator(OperatorType::Plus),
-            Some('-') => Token::Operator(OperatorType::Minus),
+            Some('-') => {
+                if self.peek_char().unwrap() == &'>' {
+                    self.read_char();
+                    Token::RetArrow
+                } else {
+                    Token::Operator(OperatorType::Minus)
+                }
+            }
             Some('/') => Token::Operator(OperatorType::Divide),
             Some('*') => Token::Operator(OperatorType::Multiply),
             Some('^') => Token::Operator(OperatorType::Exponentiate),
@@ -481,8 +508,9 @@ pub fn exec_block(
     block: &[BlockSection],
     vars: &mut HashMap<String, Variable>,
     context: &mut InterpreterContext,
-) {
-    let mut block_iter = block.iter().peekable();
+) -> Option<Variable> {
+    let mut block_iter = block.iter();
+    let mut res = None;
     while let Some(block_section) = block_iter.next() {
         match block_section {
             BlockSection::Line(tokens) => {
@@ -490,7 +518,7 @@ pub fn exec_block(
                 while let Some(token) = token_iter.next() {
                     match token {
                         Token::While => {
-                            let conditional_expr = Lexer::read_expr(&mut token_iter);
+                            let conditional_expr = Lexer::read_expr(&mut token_iter, &vars);
                             let inner_block = block_iter.next();
 
                             let mut inner_vars = vars.clone();
@@ -499,9 +527,9 @@ pub fn exec_block(
                             {
                                 while parser::eval_expr(&conditional_expr, &inner_vars)
                                     == Variable::Bool(true)
-                                {
-                                    exec_block(&inner_block_vec, &mut inner_vars, context);
-                                }
+                                    {
+                                        exec_block(&inner_block_vec, &mut inner_vars, context);
+                                    }
                             }
 
                             for (k, v) in inner_vars {
@@ -513,14 +541,13 @@ pub fn exec_block(
                         }
 
                         Token::Ident(IdentType::If) => {
-                            let conditional_expr = Lexer::read_expr(&mut token_iter);
+                            let conditional_expr = Lexer::read_expr(&mut token_iter, &vars);
 
-                            let inner_block = block_iter.peek();
+                            let inner_block = block_iter.next();
                             let mut inner_vars = vars.clone();
 
                             if let BlockSection::InnerBlock(inner_block_vec) = inner_block.unwrap()
                             {
-                                block_iter.next();
                                 if parser::eval_expr(&conditional_expr, &inner_vars)
                                     == Variable::Bool(true)
                                 {
@@ -529,6 +556,8 @@ pub fn exec_block(
                                 } else {
                                     context.if_else_status.push(false);
                                 }
+                            } else {
+                                panic!("Invalid if statement");
                             }
                             for (k, v) in inner_vars {
                                 if let Some(old_v) = vars.get_mut(&k) {
@@ -540,20 +569,20 @@ pub fn exec_block(
                         }
 
                         Token::Ident(IdentType::Else) => {
-                            dbg!(context.if_else_status.clone());
                             let prev_status =
                                 context.if_else_status.pop().expect("error: invalid else");
 
                             if !prev_status {
-                                let inner_block = block_iter.peek();
+                                let inner_block = block_iter.next();
                                 let mut inner_vars = vars.clone();
 
                                 if let BlockSection::InnerBlock(inner_block_vec) =
                                     inner_block.unwrap()
                                 {
                                     context.if_else_status.push(true);
-                                    block_iter.next();
                                     exec_block(&inner_block_vec, &mut inner_vars, context);
+                                } else {
+                                    panic!("Missing else block")
                                 }
 
                                 for (k, v) in inner_vars {
@@ -571,7 +600,7 @@ pub fn exec_block(
                             IdentType::Let => match token_iter.next().unwrap() {
                                 Token::Name(lhs) => {
                                     if let Token::Assign = token_iter.next().unwrap() {
-                                        let rhs_expr = Lexer::read_expr(&mut token_iter);
+                                        let rhs_expr = Lexer::read_expr(&mut token_iter, &vars);
                                         let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
                                         vars.insert(lhs.to_string(), rhs_eval);
                                         break;
@@ -581,51 +610,105 @@ pub fn exec_block(
                                 }
                                 _ => panic!("invalid assign"),
                             },
+                            IdentType::Return => {
+                                let expr = Lexer::read_expr(&mut token_iter, &vars);
+                                res = Some(parser::eval_expr(&expr, &vars));
+                                break;
+                            }
                             IdentType::Print => {
-                                let expr = Lexer::read_expr(&mut token_iter);
+                                let expr = Lexer::read_expr(&mut token_iter, &vars);
                                 println!("{:?}", parser::eval_expr(&expr, &vars));
+                                break;
+                            }
+                            IdentType::Function => {
+                                let fn_name =
+                                    if let Some(Token::Name(fn_name_rc)) = token_iter.next() {
+                                        &*fn_name_rc
+                                    } else {
+                                        panic!("Invalid function declaration")
+                                    };
+                                let token_vec = token_iter.filter(|token| token != &&Token::EOF).collect::<Vec<&Token>>();
+                                let mut fn_sig_split = token_vec.as_slice().split(|token| token == &&Token::RetArrow);
+                                let args_slice = fn_sig_split.next().expect("invalid function signature");
+
+                                let mut fn_args: Vec<(Rc<String>, VarType)> = Vec::new();
+
+                                if let [Token::LParen, args @ .., Token::RParen] = args_slice {
+                                    let mut args_iter = args.iter();
+
+                                    while let [&Token::Name(name_rc), &Token::Colon, &Token::Name(type_rc)] =
+                                        (&mut args_iter)
+                                            .take(3)
+                                            .collect::<Vec<&&Token>>()
+                                            .as_slice()
+                                            {
+                                                fn_args.push((name_rc.clone(), type_rc.clone()))
+                                            }
+                                }
+
+
+                                let mut ret_type = None;
+                                if let Some([Token::Name(ret_type_name_rc)]) = fn_sig_split.next() {
+                                    ret_type = Some(ret_type_name_rc.clone());
+                                }
+
+                                let block = block_iter.next();
+                                if let Some(BlockSection::InnerBlock(block_vec)) = &block {
+                                    vars.insert(
+                                        fn_name.to_string(),
+                                        Variable::Function(Rc::new(SlangFn {
+                                            args: fn_args,
+                                            block: block_vec.to_vec(),
+                                            ret_type,
+                                        })),
+                                    );
+                                } else {
+                                    panic!("Invalid function declaration");
+                                }
+
                                 break;
                             }
                             _ => todo!(),
                         },
 
-                        // Token::LParen => stack.push(token),
                         Token::Integer(_)
-                        | Token::Float(_)
-                        | Token::Name(_)
-                        | Token::StringLiteral(_)
-                        | Token::Operator(_)
-                        | Token::RParen
-                        | Token::EOF
-                        | Token::LParen => {
-                            if let Some(next_token) = token_iter.next() {
-                                if let (Token::Name(lhs), Token::Assign) =
-                                    (token.clone(), next_token.clone())
-                                {
-                                    let rhs_expr = Lexer::read_expr(&mut token_iter);
-                                    let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
+                            | Token::Float(_)
+                            | Token::Name(_)
+                            | Token::StringLiteral(_)
+                            | Token::Operator(_)
+                            | Token::RParen
+                            | Token::EOF
+                            | Token::LParen => {
+                                if let Some(next_token) = token_iter.next() {
+                                    if let (Token::Name(lhs), Token::Assign) =
+                                        (token.clone(), next_token.clone())
+                                    {
+                                        let rhs_expr = Lexer::read_expr(&mut token_iter, &vars);
+                                        let rhs_eval = parser::eval_expr(&rhs_expr, &vars);
 
-                                    match vars.get_mut(lhs.as_ref()) {
-                                        Some(prev_val) => {
-                                            if prev_val.same_type(&rhs_eval) {
-                                                *prev_val = rhs_eval;
-                                            } else {
-                                                panic!(
-                                                    "Variable types do not match: {:?}, {:?}",
-                                                    lhs, rhs_eval
-                                                );
+                                        match vars.get_mut(lhs.as_ref()) {
+                                            Some(prev_val) => {
+                                                if prev_val.same_type(&rhs_eval) {
+                                                    *prev_val = rhs_eval;
+                                                } else {
+                                                    panic!(
+                                                        "Variable types do not match: {:?}, {:?}",
+                                                        lhs, rhs_eval
+                                                    );
+                                                }
                                             }
+                                            None => panic!(format!(
+                                                    "assigned to uninitialized variable {}",
+                                                    &lhs
+                                            )),
                                         }
-                                        None => panic!(format!(
-                                            "assigned to uninitialized variable {}",
-                                            &lhs
-                                        )),
+                                        break;
+                                    } else {
+                                        parser::eval_expr(&Lexer::read_expr(&mut [token.clone(), next_token.clone()].iter().chain(token_iter), vars), vars);
                                     }
-                                    break;
                                 }
+                                break;
                             }
-                            break;
-                        }
 
                         _ => todo!(),
                     }
@@ -641,7 +724,12 @@ pub fn exec_block(
                 exec_block(blocks, vars, context);
             }
         }
+        if res != None {
+            break;
+        }
     }
+
+    res
 }
 
 fn is_ident_char(ch: char) -> bool {

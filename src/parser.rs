@@ -1,11 +1,12 @@
-use crate::{OperatorType, Token, Variable};
+use crate::{OperatorType, Token, Variable, BlockSection, exec_block, InterpreterContext};
 
 use std::collections::HashMap;
 use std::rc::Rc;
 
-#[derive(Debug, Clone, PartialOrd, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SubExpression {
     Val(Variable),
+    Function(Rc<(HashMap<String, Vec<SubExpression>>, Vec<BlockSection>)>),
     Operator(OperatorType),
     Name(Rc<String>),
 }
@@ -15,16 +16,28 @@ pub type Expression = Vec<SubExpression>;
 use std::ops;
 
 pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Variable {
-    let mut stack = Expression::with_capacity(8);
+    let mut stack: Vec<SubExpression> = Vec::with_capacity(5);
 
     expr.iter().for_each(|subexpr| match subexpr {
-        SubExpression::Val(v) => stack.push(SubExpression::Val(v.clone())),
+        SubExpression::Val(_) => stack.push(subexpr.clone()),
         SubExpression::Name(string) => stack.push(SubExpression::Val(
             vars.get(string.as_ref())
                 .unwrap_or_else(|| panic!("Uninitialized variable: {}", string))
                 .clone(),
         )),
+        SubExpression::Function(slang_fn_rc) => {
+            let (unprocessed_fn_vars, block) = slang_fn_rc.as_ref();
 
+            let mut fn_vars: HashMap<String, Variable> = unprocessed_fn_vars.iter().map(|(k, v)|{
+                (k.clone(), eval_expr(v, vars))
+            }).collect();
+
+            if let Some(res) = exec_block(block, &mut fn_vars, &mut InterpreterContext::default()) {
+                stack.push(SubExpression::Val(res));
+            } else {
+                stack.push(SubExpression::Val(Variable::Null));
+            }
+        }
         SubExpression::Operator(ty) => {
             let val1 = match stack.pop() {
                 Some(SubExpression::Val(v)) => v,
@@ -37,11 +50,11 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
 
             let v = match ty {
                 OperatorType::Cast => val2.cast(&val1),
-                OperatorType::Plus => val2 + val1,
-                OperatorType::Minus => val2 - val1,
-                OperatorType::Multiply => val2 * val1,
-                OperatorType::Divide => val2 / val1,
-                OperatorType::Exponentiate => val2.exp(val1),
+                OperatorType::Plus => &val2 + &val1,
+                OperatorType::Minus => &val2 - &val1,
+                OperatorType::Multiply => &val2 * &val1,
+                OperatorType::Divide => &val2 / &val1,
+                OperatorType::Exponentiate => val2.exp(&val1),
                 OperatorType::GreaterEqual => Variable::Bool(val2 >= val1),
                 OperatorType::LessEqual => Variable::Bool(val2 <= val1),
                 OperatorType::Greater => Variable::Bool(val2 > val1),
@@ -59,7 +72,7 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
 
     match stack.pop() {
         Some(SubExpression::Val(v)) => v,
-        _ => panic!("expr eval'd to not variable"),
+        _ => panic!(format!("expr eval'd to not variable: {:?}", expr)),
     }
 }
 
@@ -77,15 +90,15 @@ impl PartialOrd for Variable {
     }
 }
 
-impl ops::Add for Variable {
+impl ops::Add for &Variable {
     type Output = Variable;
 
     #[inline]
-    fn add(self, rhs: Variable) -> Self::Output {
+    fn add(self, rhs: &Variable) -> Self::Output {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1 + v2),
-            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 + v2 as f64),
-            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(v1 as f64 + v2),
+            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 + *v2 as f64),
+            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(*v1 as f64 + v2),
             (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1 + v2),
             (Variable::Str(v1), Variable::Str(v2)) => {
                 Variable::Str(Rc::new(format!("{}{}", v1, v2)))
@@ -95,31 +108,31 @@ impl ops::Add for Variable {
     }
 }
 
-impl ops::Sub for Variable {
+impl ops::Sub for &Variable {
     type Output = Variable;
 
     #[inline]
-    fn sub(self, rhs: Variable) -> Self::Output {
+    fn sub(self, rhs: &Variable) -> Self::Output {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1 - v2),
-            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 - v2 as f64),
-            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(v1 as f64 - v2),
+            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 - *v2 as f64),
+            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(*v1 as f64 - v2),
             (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1 - v2),
             (Variable::Str(_), Variable::Str(_)) => panic!("cannot subtract strings"),
-            _ => panic!("illegal subtraction"),
+            _ => panic!(format!("illegal subtraction: {:?} - {:?}", self, rhs)),
         }
     }
 }
 
-impl ops::Mul for Variable {
+impl ops::Mul for &Variable {
     type Output = Variable;
 
     #[inline]
-    fn mul(self, rhs: Variable) -> Self::Output {
+    fn mul(self, rhs: &Variable) -> Self::Output {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1 * v2),
-            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 * v2 as f64),
-            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(v1 as f64 * v2),
+            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 * *v2 as f64),
+            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(*v1 as f64 * v2),
             (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1 * v2),
             (Variable::Str(_), Variable::Str(_)) => panic!("cannot multiply strings"),
             _ => panic!("illegal multiplication"),
@@ -127,15 +140,15 @@ impl ops::Mul for Variable {
     }
 }
 
-impl ops::Div for Variable {
+impl ops::Div for &Variable {
     type Output = Variable;
 
     #[inline]
-    fn div(self, rhs: Variable) -> Self::Output {
+    fn div(self, rhs: &Variable) -> Self::Output {
         match (self, rhs) {
             (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1 / v2),
-            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 / v2 as f64),
-            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(v1 as f64 / v2),
+            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1 / *v2 as f64),
+            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float(*v1 as f64 / v2),
             (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1 / v2),
             (Variable::Str(_), Variable::Str(_)) => panic!("cannot multiply strings"),
             _ => panic!("illegal multiplication"),
@@ -145,12 +158,12 @@ impl ops::Div for Variable {
 
 impl Variable {
     #[inline]
-    pub fn exp(self, rhs: Variable) -> Variable {
+    pub fn exp(self, rhs: &Variable) -> Variable {
         match (self, rhs) {
-            (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1.pow(v2 as u32)),
-            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1.powi(v2 as i32)),
-            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float((v1 as f64).powf(v2)),
-            (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1.powf(v2)),
+            (Variable::Integer(v1), Variable::Integer(v2)) => Variable::Integer(v1.pow(*v2 as u32)),
+            (Variable::Float(v1), Variable::Integer(v2)) => Variable::Float(v1.powi(*v2 as i32)),
+            (Variable::Integer(v1), Variable::Float(v2)) => Variable::Float((v1 as f64).powf(*v2)),
+            (Variable::Float(v1), Variable::Float(v2)) => Variable::Float(v1.powf(*v2)),
             (Variable::Str(_), Variable::Str(_)) => panic!("cannot multiply strings"),
             _ => panic!("illegal multiplication"),
         }
@@ -175,8 +188,8 @@ impl Variable {
             Variable::Bool(*bool1 && *bool2)
         } else {
             panic!(format!(
-                "Illegal And use with non bool: {:?}, {:?}",
-                self, rhs
+                    "Illegal And use with non bool: {:?}, {:?}",
+                    self, rhs
             ));
         }
     }
