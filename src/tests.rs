@@ -179,6 +179,18 @@ pub mod tests {
     }
 
     #[test]
+    fn if_elif_statement() {
+        let filename = Some("tests/elif.slang");
+        let mut vars: HashMap<String, Variable> = default_vars!();
+        run_file!(filename, vars);
+
+        assert_eq!(vars.get("a").unwrap(), &Variable::Bool(false));
+        assert_eq!(vars.get("b").unwrap(), &Variable::Bool(false));
+        assert_eq!(vars.get("c").unwrap(), &Variable::Bool(true));
+        assert_eq!(vars.get("d").unwrap(), &Variable::Bool(false));
+    }
+
+    #[test]
     fn basic_fn() {
         let filename = Some("tests/basic_function.slang");
         let mut vars: HashMap<String, Variable> = default_vars!();
