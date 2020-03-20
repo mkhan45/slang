@@ -307,6 +307,9 @@ fn process_while_loop(
     if let BlockSection::InnerBlock(inner_block_vec) = inner_block.unwrap() {
         while expr_ev::eval_expr(&conditional_expr, &inner_vars) == Variable::Bool(true) {
             exec_block(&inner_block_vec, &mut inner_vars, context);
+            if context.should_break {
+                break;
+            }
         }
     }
 

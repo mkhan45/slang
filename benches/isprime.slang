@@ -1,21 +1,27 @@
-let n = 3
-while n < 300 {
+fn is_prime(n: Int) -> Bool {
+   if n == 2 or n == 3 {
+      return True
+   }
+
+   if n % 2 == 0 or n % 3 == 0 {
+      return False
+   }
+
    let n_sqrt = n^0.5
 
-      let i = 2
-      let not_break = True
-      let is_prime = True
-      while not_break {
-         if n % i == 0 {
-            not_break = False
-            is_prime = False
-         }
-
-         if i >= n_sqrt {
-            not_break = False
-         }
-         i = i + 1
+   let i = 5
+   while i < n_sqrt {
+      if n % i == 0 or (n % (i + 2) != 0) { 
+         return False
       }
+      i = i + 6
+   }
 
+   return True
+}
+
+let n = 2
+while n < 30 {
+   let res = is_prime(n)
    n = n + 1
 }
