@@ -160,6 +160,7 @@ impl<'a> Lexer<'a> {
                         "let" => Token::Ident(IdentType::Let),
                         "if" => Token::Ident(IdentType::If),
                         "else" => Token::Ident(IdentType::Else),
+                        "elif" => Token::Ident(IdentType::Elif),
                         "return" => Token::Ident(IdentType::Return),
                         "while" => Token::While,
                         _ => Token::Name(Rc::new(ident)),

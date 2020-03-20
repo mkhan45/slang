@@ -109,6 +109,7 @@ pub enum IdentType {
     Let,
     If,
     Else,
+    Elif,
     Return,
 }
 
@@ -186,6 +187,16 @@ pub fn exec_block(
                                 }
 
                                 break;
+                            }
+                            block_iter.next();
+                        }
+
+                        Token::Ident(IdentType::Elif) => {
+                            let prev_status =
+                                context.if_else_status.pop().expect("error: invalid else");
+
+                            if !prev_status {
+                                process_if_statement(&mut block_iter, &mut token_iter, vars, context);
                             }
                             block_iter.next();
                         }
