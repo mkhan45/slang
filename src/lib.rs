@@ -65,6 +65,21 @@ pub enum Variable {
     Custom(Rc<(String, HashMap<String, Variable>)>),
 }
 
+impl std::fmt::Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Variable::Null => write!(f, "NULL"),
+            Variable::Integer(v) => write!(f, "{}", v),
+            Variable::Float(v) => write!(f, "{}", v),
+            Variable::Str(str_rc) => write!(f, "{}", str_rc.as_ref()),
+            Variable::Bool(v) => write!(f, "{}", v),
+            Variable::Function(_) => panic!("cannot print a function"),
+            Variable::Type(type_rc) => write!(f, "Type: {}", type_rc.as_ref()),
+            Variable::Custom(_) => unimplemented!(),
+        }
+    }
+}
+
 impl Variable {
     pub fn same_type(&self, rhs: &Variable) -> bool {
         match (self, rhs) {
@@ -223,7 +238,7 @@ pub fn exec_block(
                             }
                             IdentType::Print => {
                                 let expr = read_next_expr(&mut token_iter, &vars);
-                                println!("{:?}", expr_ev::eval_expr(&expr, &vars));
+                                println!("{}", expr_ev::eval_expr(&expr, &vars));
                                 break;
                             }
                             IdentType::Function => {
