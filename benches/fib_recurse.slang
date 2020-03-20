@@ -1,12 +1,11 @@
 fn fib(n: Int) -> Int {
-   let retval = 1
    if n > 1 {
       let a = fib(n - 1)
       let b = fib(n - 2)
-      retval = a + b
+      return a + b
    } 
-   return retval
+   return 1
 }
 
 
-fib(40)
+fib(20)

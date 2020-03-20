@@ -15,7 +15,7 @@ pub enum BlockSection {
     InnerBlock(Vec<BlockSection>),
 }
 
-pub fn read_expr<'a>(
+pub fn read_next_expr<'a>(
     token_iter: &mut impl Iterator<Item = &'a Token>,
     vars: &HashMap<String, Variable>,
 ) -> Expression {
@@ -37,8 +37,10 @@ pub fn read_expr<'a>(
 
                             if let Some(Token::LParen) = token_iter.next() {
                                 for var_name in args_name_iter {
-                                    args_map
-                                        .insert(var_name.to_string(), read_expr(token_iter, vars));
+                                    args_map.insert(
+                                        var_name.to_string(),
+                                        read_next_expr(token_iter, vars),
+                                    );
                                 }
                             }
 

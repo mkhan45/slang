@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub mod parser;
-use parser::{read_expr, BlockSection};
+use parser::{read_next_expr, BlockSection};
 
 mod expression_eval;
 use crate::expression_eval as expr_ev;
@@ -41,6 +41,7 @@ macro_rules! default_vars {
 pub struct InterpreterContext {
     if_else_status: Vec<bool>,
     ret_val: Option<Variable>,
+    should_break: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -140,10 +141,12 @@ pub fn exec_block(
     block: &[BlockSection],
     vars: &mut HashMap<String, Variable>,
     context: &mut InterpreterContext,
-) -> Option<Variable> {
+) {
     let mut block_iter = block.iter();
-    let mut res = None;
     while let Some(block_section) = block_iter.next() {
+        if context.should_break {
+            break;
+        }
         match block_section {
             BlockSection::Line(tokens) => {
                 let mut token_iter = tokens.iter().peekable();
@@ -191,7 +194,7 @@ pub fn exec_block(
                             IdentType::Let => match token_iter.next().unwrap() {
                                 Token::Name(lhs) => {
                                     if let Token::Assign = token_iter.next().unwrap() {
-                                        let rhs_expr = read_expr(&mut token_iter, &vars);
+                                        let rhs_expr = read_next_expr(&mut token_iter, &vars);
                                         let rhs_eval = expr_ev::eval_expr(&rhs_expr, &vars);
                                         vars.insert(lhs.to_string(), rhs_eval);
                                         break;
@@ -202,12 +205,13 @@ pub fn exec_block(
                                 _ => panic!("invalid assign"),
                             },
                             IdentType::Return => {
-                                let expr = read_expr(&mut token_iter, &vars);
-                                res = Some(expr_ev::eval_expr(&expr, &vars));
+                                let expr = read_next_expr(&mut token_iter, &vars);
+                                context.ret_val = Some(expr_ev::eval_expr(&expr, &vars));
+                                context.should_break = true;
                                 break;
                             }
                             IdentType::Print => {
-                                let expr = read_expr(&mut token_iter, &vars);
+                                let expr = read_next_expr(&mut token_iter, &vars);
                                 println!("{:?}", expr_ev::eval_expr(&expr, &vars));
                                 break;
                             }
@@ -234,7 +238,7 @@ pub fn exec_block(
                                 if let (Token::Name(lhs), Token::Assign) =
                                     (token.clone(), next_token.clone())
                                 {
-                                    let rhs_expr = read_expr(&mut token_iter, &vars);
+                                    let rhs_expr = read_next_expr(&mut token_iter, &vars);
                                     let rhs_eval = expr_ev::eval_expr(&rhs_expr, &vars);
 
                                     match vars.get_mut(lhs.as_ref()) {
@@ -256,7 +260,7 @@ pub fn exec_block(
                                     break;
                                 } else {
                                     expr_ev::eval_expr(
-                                        &read_expr(
+                                        &read_next_expr(
                                             &mut [token.clone(), next_token.clone()]
                                                 .iter()
                                                 .chain(token_iter),
@@ -283,12 +287,7 @@ pub fn exec_block(
                 exec_block(blocks, vars, context);
             }
         }
-        if res != None {
-            break;
-        }
     }
-
-    res
 }
 
 type TokenIterPeekable<'a> = iter::Peekable<std::slice::Iter<'a, Token>>;
@@ -300,7 +299,7 @@ fn process_while_loop(
     vars: &mut HashMap<String, Variable>,
     context: &mut InterpreterContext,
 ) {
-    let conditional_expr = read_expr(token_iter, &vars);
+    let conditional_expr = read_next_expr(token_iter, &vars);
     let inner_block = block_iter.next();
 
     let mut inner_vars = vars.clone();
@@ -324,7 +323,7 @@ fn process_if_statement(
     vars: &mut HashMap<String, Variable>,
     context: &mut InterpreterContext,
 ) {
-    let conditional_expr = read_expr(token_iter, &vars);
+    let conditional_expr = read_next_expr(token_iter, &vars);
 
     let inner_block = block_iter.next();
     let mut inner_vars = vars.clone();

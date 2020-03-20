@@ -20,11 +20,16 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
 
     expr.iter().for_each(|subexpr| match subexpr {
         SubExpression::Val(_) => stack.push(subexpr.clone()),
-        SubExpression::Name(string) => stack.push(SubExpression::Val(
-            vars.get(string.as_ref())
-                .unwrap_or_else(|| panic!("Uninitialized variable: {}", string))
-                .clone(),
-        )),
+        SubExpression::Name(string) => {
+            stack.push(SubExpression::Val(match vars.get(string.as_ref()) {
+                Some(v) => v.clone(),
+                //TODO figure out how to make this not suck
+                None => match crate::default_vars!().get(string.as_ref()) {
+                    Some(v) => v.clone(),
+                    None => panic!("Uninitialized variable: {}", string.as_ref()),
+                },
+            }))
+        }
         SubExpression::Function(slang_fn_rc) => {
             let (unprocessed_fn_vars, block) = slang_fn_rc.as_ref();
 
@@ -33,11 +38,12 @@ pub fn eval_expr(expr: &[SubExpression], vars: &HashMap<String, Variable>) -> Va
                 .map(|(k, v)| (k.clone(), eval_expr(v, vars)))
                 .collect();
 
-            if let Some(res) = exec_block(block, &mut fn_vars, &mut InterpreterContext::default()) {
-                stack.push(SubExpression::Val(res));
-            } else {
-                stack.push(SubExpression::Val(Variable::Null));
-            }
+            let mut context = InterpreterContext::default();
+            exec_block(block, &mut fn_vars, &mut context);
+            stack.push(match context.ret_val {
+                Some(val) => SubExpression::Val(val),
+                None => SubExpression::Val(Variable::Null),
+            });
         }
         SubExpression::Operator(ty) => {
             let val1 = match stack.pop() {
