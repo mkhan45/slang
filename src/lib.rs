@@ -37,11 +37,23 @@ macro_rules! default_vars {
     }};
 }
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct InterpreterContext {
     if_else_status: Vec<bool>,
     ret_val: Option<Variable>,
     should_break: bool,
+    line_num: usize,
+}
+
+impl Default for InterpreterContext {
+    fn default() -> Self {
+        InterpreterContext {
+            if_else_status: Vec::with_capacity(1),
+            ret_val: None,
+            should_break: false,
+            line_num: 1,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -165,6 +177,7 @@ pub fn exec_block(
         }
         match block_section {
             BlockSection::Line(tokens) => {
+                context.line_num += 1;
                 let mut token_iter = tokens.iter().peekable();
                 while let Some(token) = token_iter.next() {
                     match token {
@@ -192,7 +205,7 @@ pub fn exec_block(
                                     context.if_else_status.push(true);
                                     exec_block(&inner_block_vec, &mut inner_vars, context);
                                 } else {
-                                    panic!("Missing else block")
+                                    panic!("Error on line {}, Missing block for else statement", context.line_num)
                                 }
 
                                 for (k, v) in inner_vars {
@@ -208,7 +221,7 @@ pub fn exec_block(
 
                         Token::Ident(IdentType::Elif) => {
                             let prev_status =
-                                context.if_else_status.pop().expect("error: invalid else");
+                                context.if_else_status.pop().expect(&format!("Error on line {}: invalid else", context.line_num));
 
                             if !prev_status {
                                 process_if_statement(&mut block_iter, &mut token_iter, vars, context);
@@ -225,10 +238,10 @@ pub fn exec_block(
                                         vars.insert(lhs.to_string(), rhs_eval);
                                         break;
                                     } else {
-                                        panic!("syntax error after let token")
+                                        panic!("Error on line {}: syntax error after let token", context.line_num)
                                     }
                                 }
-                                _ => panic!("invalid assign"),
+                                _ => panic!("Error on line {}: invalid assign", context.line_num),
                             },
                             IdentType::Return => {
                                 let expr = read_next_expr(&mut token_iter, &vars);
@@ -246,6 +259,7 @@ pub fn exec_block(
                                     &mut block_iter,
                                     &mut token_iter,
                                     vars,
+                                    context,
                                 );
                                 break;
                             }
@@ -273,13 +287,14 @@ pub fn exec_block(
                                                 *prev_val = rhs_eval;
                                             } else {
                                                 panic!(
-                                                    "Variable types do not match: {:?}, {:?}",
-                                                    lhs, rhs_eval
+                                                    "Error on line {}: Variable types do not match: {:?}, {:?}",
+                                                    context.line_num, lhs, rhs_eval
                                                 );
                                             }
                                         }
                                         None => panic!(format!(
-                                            "assigned to uninitialized variable {}",
+                                            "Error on line {}: assigned to uninitialized variable {}",
+                                            context.line_num,
                                             &lhs
                                         )),
                                     }
@@ -365,7 +380,7 @@ fn process_if_statement(
             context.if_else_status.push(false);
         }
     } else {
-        panic!("Invalid if statement");
+        panic!("Error on line {}: Invalid if statement", context.line_num);
     }
     for (k, v) in inner_vars {
         if let Some(old_v) = vars.get_mut(&k) {
@@ -378,11 +393,12 @@ fn process_function_declaration(
     block_iter: &mut BlockIter,
     token_iter: &mut TokenIterPeekable,
     vars: &mut HashMap<String, Variable>,
+    context: &InterpreterContext,
 ) {
     let fn_name = if let Some(Token::Name(fn_name_rc)) = token_iter.next() {
         &*fn_name_rc
     } else {
-        panic!("Invalid function declaration")
+        panic!("Error on line {}: Invalid function declaration", context.line_num)
     };
     let token_vec = token_iter
         .filter(|token| token != &&Token::EOF)
@@ -422,6 +438,6 @@ fn process_function_declaration(
             })),
         );
     } else {
-        panic!("Invalid function declaration");
+        panic!("Error on line {}: Invalid function declaration", context.line_num);
     }
 }
