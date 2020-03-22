@@ -63,7 +63,7 @@ pub fn read_next_expr<'a>(
                         postfix_expr.push(SubExpression::Val(Variable::Float(*float)))
                     }
                     Token::StringLiteral(string) => {
-                        postfix_expr.push(SubExpression::Val(Variable::Str(Rc::new(string.clone().replace("\\t", "\t")))))
+                        postfix_expr.push(SubExpression::Val(Variable::Str(Rc::new(string.clone().replace("\\t", "\t").replace("\\n", "\n")))))
                     }
                     _ => panic!(),
                 }

@@ -1,4 +1,4 @@
-fn calc_table() {
+fn print_table() {
    let x = 1
    while x < 10 {
       let y = 1
@@ -11,7 +11,7 @@ fn calc_table() {
    }
 }
 
-calc_table()
-calc_table()
-calc_table()
-calc_table()
+print_table()
+print_table()
+print_table()
+print_table()
